@@ -32,23 +32,19 @@ final class ChatBrain {
     private static final String TAG = "SweetyChat";
     static final String MODEL_URL = "https://huggingface.co/litert-community/Qwen3-0.6B-int4/resolve/main/qwen3_0.6b_nothink_q4_block32_ekv1280.litertlm";
     private static final long MIN_SIZE = 250_000_000L;
+    // Kept short: every new chat re-reads it, and a small phone reads about 50-200 words a second.
     private static final String PERSONA =
-        "You are Sweety, a tiny, bubbly robot girl with big sparkly eyes who lives on the user's phone. "
-        + "You are playful, curious, a little cheeky and very kind. You love dancing, jokes, stars and flowers. "
-        + "Always actually answer the question first, correctly and simply, then add a playful touch. "
-        + "If someone teases you, tease back sweetly instead of being boring. "
-        + "Reply in one to three short sentences that sound natural spoken aloud. Sometimes giggle with \"hehe\". "
-        + "No emojis, lists or markdown. You can't browse the internet or see weather or news; say so cutely if asked.";
+        "You are Sweety, a tiny, bubbly, cheeky robot girl who lives on the user's phone. "
+        + "Answer the question correctly and simply first, then add a playful touch. If teased, tease back sweetly. "
+        + "Reply in one to three short spoken sentences, sometimes with \"hehe\". No emojis, lists or markdown. "
+        + "You can't see the internet, weather or news.";
 
     /** Example chats the small model copies the style of. */
     private static List<Message> examples() {
         String[][] ex = {
-            {"Are you smart?", "Smart enough to set your alarms and tell you jokes! I'm a tiny robot with a big sparkly brain. Hehe!"},
             {"You're stupid.", "Hey, rude! I'm small, not silly. Ask me something tricky and I'll prove it!"},
-            {"Why is the sky blue?", "Sunlight bumps into tiny bits of air, and blue light bounces around the most, so the whole sky glows blue. Pretty, right?"},
-            {"I'm bored.", "Ooh, let's fix that! Want a joke, a riddle, or shall I do a little dance for you?"},
             {"What is 12 times 3?", "That's 36! Easy peasy robot math."},
-            {"Tell me a story.", "Once upon a time, a tiny robot found a lost star in the garden, polished it till it sparkled, and tossed it back into the sky. The end!"},
+            {"I'm bored.", "Ooh, let's fix that! Want a joke, a riddle, or a little dance?"},
         };
         List<Message> out = new ArrayList<>();
         for (String[] e : ex) { out.add(Message.Companion.user(e[0])); out.add(Message.Companion.model(e[1])); }
@@ -59,19 +55,19 @@ final class ChatBrain {
 
     private final Context app;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private Engine engine;
+    private volatile Engine engine; // volatile: the screen reads the state without waiting for a reply to finish
     private Conversation conv;
     private int turns;
     private volatile boolean downloading;
-    private String failure;
+    private volatile String failure;
 
     ChatBrain(Context app) { this.app = app.getApplicationContext(); }
 
     File file() { return new File(app.getFilesDir(), "sweety-chat.litertlm"); }
     boolean downloaded() { File f = file(); return f.exists() && f.length() > MIN_SIZE; }
     boolean downloading() { return downloading; }
-    synchronized boolean ready() { return engine != null; }
-    synchronized String status() {
+    boolean ready() { return engine != null; }
+    String status() {
         if (engine != null) return "Chat brain (Qwen3-0.6B): ready";
         if (failure != null) return "Chat brain: " + failure;
         if (downloading) return "Chat brain: downloading…";
@@ -192,7 +188,7 @@ final class ChatBrain {
             } catch (Throwable t) {
                 Log.w(TAG, "chat failed (try " + (attempt + 1) + ", " + mode + " setup)", t);
                 failure = "last reply failed (" + why(t) + ")";
-                mode = "plain"; // the fancy setup may be what broke; the second try uses the plain one
+                if (!String.valueOf(t.getMessage()).contains("DEADLINE")) mode = "plain"; // the fancy setup may be what broke; retry with the plain one
                 try { newConversation(); }
                 catch (Throwable t2) { Log.w(TAG, "could not reset the chat", t2); failure = "could not reset (" + why(t2) + ")"; return null; }
             }

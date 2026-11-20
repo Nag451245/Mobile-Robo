@@ -1,5 +1,5 @@
 // Runs Sweety's two Cactus models on the CI machine (Linux x86_64 build of the same Cactus 4.1.4 runtime):
-//   cactus_host hear  whistle.cact needle3.cact list.tsv   -> "expect<TAB>file<TAB>what Whistle heard"
+//   cactus_host hear  whistle.cact needle3.cact list.tsv [keywords] -> "expect<TAB>file<TAB>what Whistle heard"
 //   cactus_host think whistle.cact needle3.cact list.tsv   -> "expect<TAB>text<TAB>Needle 3 output"
 // The models load in the same order as on the phone (Needle, Whistle, then Needle's tools again).
 #include <cstdio>
@@ -41,6 +41,7 @@ static std::string clean(const char* s) {
 int main(int argc, char** argv) {
     if (argc < 5) { fprintf(stderr, "usage: cactus_host hear|think whistle.cact needle3.cact list.tsv\n"); return 2; }
     std::string mode = argv[1];
+    const char* keywords = argc > 5 && argv[5][0] ? argv[5] : nullptr; // optional Whistle keyword hint, like the phone uses
     std::vector<unsigned char> needle = slurp(argv[3]), whistle = slurp(argv[2]);
     std::string sys = "You are Sweety, a cute robot assistant on an Android phone. Pick the tool that does what the user asks.";
     std::string toolsJson;
@@ -61,7 +62,7 @@ int main(int argc, char** argv) {
         int rc;
         if (mode == "hear") {
             std::vector<float> pcm = wav(item);
-            rc = cactus_transcribe(pcm.data(), (int) pcm.size(), "en", nullptr, 0, out.data(), (int) out.size() - 1);
+            rc = cactus_transcribe(pcm.data(), (int) pcm.size(), "en", keywords, 0, out.data(), (int) out.size() - 1);
         } else {
             cactus_reset();
             rc = cactus_complete(item.c_str(), nullptr, 0, 160, out.data(), (int) out.size() - 1);

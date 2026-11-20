@@ -12,7 +12,10 @@ import java.util.regex.Pattern;
  */
 final class WakePhrase {
     private static final Pattern WORD = Pattern.compile("[a-z']+");
-    private static final String[] GREETINGS = {"hey", "hay", "hei", "hai", "hi", "hello", "hallo", "ok", "okay", "oh", "o", "yo", "he", "heh", "hiya", "ay", "eh"};
+    private static final String[] GREETINGS = {"hey", "hay", "hei", "hai", "hi", "hello", "hallo", "ok", "okay", "oh", "o", "yo", "he", "heh", "hiya", "ay", "eh",
+        "i", "ah", "aye", "high", "hie", "his", "hes", "he's", "hase", "haze", "hays", "hay's", "hey's", "heys", "hies"};
+    /** Greetings Whistle wrote with the "s" of "Sweety" stuck on ("hey sweety" -> "his weedy", "hase witty"). */
+    private static final String[] S_GREETINGS = {"his", "hes", "he's", "hase", "haze", "hays", "hay's", "hey's", "heys", "hies"};
     /** Words that look like her name to the sound rules but are everyday words. */
     private static final String[] NOT_NAME = {"sweet", "sweets", "suit", "suits", "set", "sit", "seat", "street", "state", "sweat", "swat", "sweater", "sweden",
         "swiggy", "switch", "swim", "swing", "swear", "sweep", "swift", "south", "stay", "story", "start", "stop", "store", "site", "sweetly"};
@@ -32,6 +35,20 @@ final class WakePhrase {
             boolean atStart = i == 0 || (i == 1 && ("a".equals(words.get(0)) || greeting(words.get(0))));
             if (!greeted && !atStart) continue;
             int len = nameLength(words, i, greeted);
+            // "his weedy", "hase witty": the s went to the greeting
+            if (len == 0 && greeted && words.get(i).startsWith("w") && isAny(words.get(i - 1), S_GREETINGS)) {
+                List<String> fixed = new ArrayList<>(words);
+                fixed.set(i, "s" + words.get(i));
+                len = nameLength(fixed, i, true);
+            }
+            // "heysweety", "hisweety": greeting and name run together
+            if (len == 0 && atStart && words.get(i).matches("(hey|hay|hi|he|his|hes)s?w.*")) {
+                String w = words.get(i).replaceFirst("^(hey|hay|hi|he|his|hes)", "");
+                if (!w.startsWith("s")) w = "s" + w;
+                List<String> fixed = new ArrayList<>(words);
+                fixed.set(i, w);
+                len = nameLength(fixed, i, true);
+            }
             if (len == 0) continue;
             int end = spans.get(i + len - 1)[1];
             return heard.substring(end).replaceAll("^[\\s,.!?;:\\-]+", "").replaceAll("[.!]+$", "").trim();
@@ -39,7 +56,9 @@ final class WakePhrase {
         return null;
     }
 
-    private static boolean greeting(String w) { for (String g : GREETINGS) if (g.equals(w)) return true; return false; }
+    private static boolean greeting(String w) { return isAny(w, GREETINGS); }
+
+    private static boolean isAny(String w, String[] list) { for (String g : list) if (g.equals(w)) return true; return false; }
 
     /** How many words starting at i spell her name (0 = not her name). Loose spellings only count after a greeting. */
     private static int nameLength(List<String> words, int i, boolean greeted) {

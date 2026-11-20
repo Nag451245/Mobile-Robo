@@ -39,7 +39,7 @@ final class RuleBrain {
 
         // alarms
         if (s.contains("alarm") || s.contains("wake me")) {
-            Matcher m = TIME.matcher(s);
+            Matcher m = TIME.matcher(spokenTime(s));
             while (m.find()) {
                 int h = Integer.parseInt(m.group(1));
                 if (h > 23) continue;
@@ -145,6 +145,17 @@ final class RuleBrain {
             default: return true;
         }
         return Pattern.compile("\\b(" + k + ")\\b", Pattern.CASE_INSENSITIVE).matcher(text).find();
+    }
+
+    private static final String[] HOURS = {"twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"};
+
+    /** Speech-to-text often writes times as words: "seven I am" -> "7 am", "six thirty p m" -> "6 30 pm". */
+    static String spokenTime(String s) {
+        String t = s.replaceAll("\\bhalf past (\\w+)", "$1 thirty").replaceAll("\\bfifteen\\b", "15").replaceAll("\\bthirty\\b", "30")
+            .replaceAll("\\bforty[ -]?five\\b", "45").replaceAll("\\bo'? ?clock\\b", "");
+        for (int i = HOURS.length - 1; i >= 0; i--) t = t.replaceAll("\\b" + HOURS[i] + "\\b", String.valueOf(i == 0 ? 12 : i));
+        t = t.replaceAll("(\\d) +(i|eye|a) ?am\\b", "$1 am").replaceAll("\\ba ?\\. ?m\\b\\.?|\\ba m\\b", "am").replaceAll("\\bp ?\\.? ?m\\b\\.?", "pm");
+        return t.replaceAll("\\b(\\d{1,2}) (\\d{2})\\b", "$1:$2");
     }
 
     private static String cleanName(String who) {

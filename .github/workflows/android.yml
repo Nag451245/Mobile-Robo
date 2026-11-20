@@ -14,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-${{ github.ref }}
+  group: ${{ github.ref == 'refs/heads/main' && 'android-main' || format('android-{0}', github.sha) }}
   cancel-in-progress: false
 
 env:
@@ -157,8 +157,11 @@ jobs:
         continue-on-error: true
         run: |
           set -o pipefail
-          ./cactus_host hear cx/whistle.cact cx/needle3.cact speech/list.tsv 2>logs/3-hear-stderr.log | tee transcripts.tsv
-          java -cp ht:ht/json.jar com.blink.buddy.HostTest transcripts.tsv 2>&1 | tee logs/3-hear.log
+          # Without and with the keyword hint the phone gives Whistle (her name); the phone uses the hint.
+          ./cactus_host hear cx/whistle.cact cx/needle3.cact speech/list.tsv "" 2>logs/3a-hear-stderr.log > transcripts-nohint.tsv
+          java -cp ht:ht/json.jar com.blink.buddy.HostTest transcripts-nohint.tsv > logs/3a-hear-nohint.log 2>&1 || true
+          ./cactus_host hear cx/whistle.cact cx/needle3.cact speech/list.tsv Sweety 2>logs/3b-hear-stderr.log > transcripts.tsv
+          java -cp ht:ht/json.jar com.blink.buddy.HostTest transcripts.tsv 2>&1 | tee logs/3b-hear-hint.log
 
       - name: Needle 3 + rules send commands to actions and small talk to the chat brain
         if: steps.harness.outcome == 'success'
@@ -178,6 +181,7 @@ jobs:
           name: host-test-results
           path: |
             blink-android/transcripts.tsv
+            blink-android/transcripts-nohint.tsv
             blink-android/needle.tsv
 
   emulator:

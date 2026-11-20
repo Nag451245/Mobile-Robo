@@ -30,6 +30,13 @@ public class HostTest {
         System.out.println((ok ? "ok    " : "FAIL  ") + "route [" + text + "] needle=" + needleTool + " -> " + got + (ok ? "" : "   expected " + expect));
     }
 
+    static void alarm(String text, int h, int m) {
+        Call c = new RuleBrain().parse(text);
+        boolean ok = c != null && "set_alarm".equals(c.name) && c.args.optInt("hour", -1) == h && c.args.optInt("minute", -1) == m;
+        if (!ok) fails++;
+        System.out.println((ok ? "ok    " : "FAIL  ") + "alarm [" + text + "] -> " + (c == null ? "none" : c.name + " " + c.args) + (ok ? "" : "   expected " + h + ":" + m));
+    }
+
     public static void main(String[] a) throws Exception {
         if (a.length > 0 && a[0].equals("tools")) { System.out.print(Call.TOOLS_JSON); return; }
         if (a.length > 1 && a[0].equals("needle")) { needle(a[1]); finish(); return; }
@@ -49,6 +56,16 @@ public class HostTest {
         wake("Hello, Sweety?", "");
         wake("Hey Suity, do a backflip", "do a backflip");
         wake("Oh, hey sweety, dance", "dance");
+        // What Whistle really wrote on the Android 14 emulator
+        wake("His weedy, what Tim is it?", "what Tim is it?");
+        wake("I sweety dance for me.", "dance for me");
+        wake("HASE WITTY.", "");
+        wake("His sweetty set an alarm for seven I am.", "set an alarm for seven I am");
+        wake("Heysweety, what time is it", "what time is it");
+        wake("What time is it?", null);
+        wake("I love eating sweets.", null);
+        wake("His wife is here", null);
+        wake("I sweat a lot", null);
         wake("You're such a sweetie.", null);
         wake("That was sweet everything", null);
         wake("hey there", null);
@@ -71,6 +88,12 @@ public class HostTest {
         route("do a cartwheel", null, 0, "sweety_fun");
         route("set an alarm for 7 am", "set_alarm", .95f, "set_alarm");
         route("set an alarm for 7 am", null, 0, "set_alarm");
+        alarm("set an alarm for seven I am", 7, 0);
+        alarm("set an alarm for six thirty p m", 18, 30);
+        alarm("wake me up at 6:45 am", 6, 45);
+        alarm("set an alarm for half past eight in the morning", 8, 30);
+        alarm("set an alarm for 7 30 pm", 19, 30);
+        alarm("alarm at ten o clock at night", 22, 0);
         route("what time is it", "phone_status", .9f, "phone_status");
         route("remind me in 10 minutes to drink water", "set_timer", .9f, "set_timer");
         route("turn on the torch", "flashlight", .9f, "flashlight");

@@ -16,8 +16,9 @@ import java.io.InputStream;
  */
 final class NeedleBrain {
     private static final String TAG = "SweetyBrain";
-    private boolean started, textReady, speechReady;
-    String status = "starting…";
+    // volatile, and read without the lock: the screen must never wait while Needle or Whistle is busy
+    private volatile boolean started, textReady, speechReady;
+    volatile String status = "starting…";
 
     synchronized void ensure(Context ctx) {
         if (started) return;
@@ -45,8 +46,8 @@ final class NeedleBrain {
         }
     }
 
-    synchronized boolean textReady() { return textReady; }
-    synchronized boolean speechReady() { return speechReady; }
+    boolean textReady() { return textReady; }
+    boolean speechReady() { return speechReady; }
 
     /** Returns the tool call, or null when Needle answers with no call. */
     synchronized Call parse(String text) {
@@ -79,10 +80,10 @@ final class NeedleBrain {
     }
 
     /** Speech to text with Whistle. pcm: 16 kHz mono floats in [-1, 1]. Returns null if it fails. */
-    synchronized String transcribe(float[] pcm) {
+    synchronized String transcribe(float[] pcm, String keywords) {
         if (!speechReady) return null;
         try {
-            String out = CactusNative.transcribe(pcm, "en");
+            String out = CactusNative.transcribe(pcm, "en", keywords);
             if (out == null) { Log.w(TAG, "transcribe failed: " + CactusNative.lastError()); return null; }
             JSONObject o = json(out);
             String text = o != null ? o.optString("text", "") : out;

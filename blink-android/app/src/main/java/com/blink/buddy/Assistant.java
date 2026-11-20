@@ -92,10 +92,14 @@ final class Assistant {
     interface TextCallback { void onText(String text); }
 
     /** Offline speech to text with Whistle, on the brain's worker thread; the callback runs on the main thread. */
+    /** Words Whistle should expect, so "Hey Sweety" isn't heard as "his weedy". */
+    static final String KEYWORDS = "Sweety";
+
     void transcribe(float[] pcm, TextCallback cb) {
         worker.execute(() -> {
             needle.ensure(app);
-            String text = needle.transcribe(pcm);
+            String text = needle.transcribe(pcm, KEYWORDS);
+            if ((text == null || text.isEmpty()) && KEYWORDS != null) text = needle.transcribe(pcm, null); // in case the keyword hint is refused
             main.post(() -> cb.onText(text));
         });
     }

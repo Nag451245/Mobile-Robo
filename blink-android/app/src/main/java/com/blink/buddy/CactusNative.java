@@ -17,7 +17,8 @@ final class CactusNative {
     static native void setThreads(int threads);
     static native int init(String systemPrompt, String toolsJson);
     static native String complete(String input, int maxNewTokens);
-    static native String transcribe(float[] pcm16k, String language);
+    /** keywords: words Whistle should listen out for (her name), or null. */
+    static native String transcribe(float[] pcm16k, String language, String keywords);
     static native void reset();
 
     private CactusNative() {}

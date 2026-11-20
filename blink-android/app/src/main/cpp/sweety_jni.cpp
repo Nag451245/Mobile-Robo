@@ -59,14 +59,14 @@ Java_com_blink_buddy_CactusNative_complete(JNIEnv* env, jclass, jstring input, j
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_blink_buddy_CactusNative_transcribe(JNIEnv* env, jclass, jfloatArray pcm, jstring language) {
+Java_com_blink_buddy_CactusNative_transcribe(JNIEnv* env, jclass, jfloatArray pcm, jstring language, jstring keywords) {
     if (!pcm) return nullptr;
     jsize n = env->GetArrayLength(pcm);
     std::vector<float> samples((size_t) n);
     env->GetFloatArrayRegion(pcm, 0, n, samples.data());
-    std::string lang = utf(env, language);
+    std::string lang = utf(env, language), kw = utf(env, keywords);
     std::fill(g_out.begin(), g_out.end(), 0);
-    int rc = cactus_transcribe(samples.data(), (int) n, lang.empty() ? nullptr : lang.c_str(), nullptr, 0, g_out.data(), (int) g_out.size() - 1);
+    int rc = cactus_transcribe(samples.data(), (int) n, lang.empty() ? nullptr : lang.c_str(), kw.empty() ? nullptr : kw.c_str(), 0, g_out.data(), (int) g_out.size() - 1);
     if (rc < 0) return nullptr;
     return ascii(env, g_out.data());
 }
