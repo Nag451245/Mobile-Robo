@@ -146,10 +146,11 @@ jobs:
           curl -fsSL --retry 3 -o cx/needle3.cact "$HF/needle3/resolve/main/needle3.cact"
           curl -fsSL --retry 3 -o cx/whistle.cact "$HF/whistle/resolve/main/whistle.cact"
           java -cp ht:ht/json.jar com.blink.buddy.HostTest tools > tools.json
-          ls -la cx; file cx/libcactus.a; ar t cx/libcactus.a | head -5
-          g++ -O2 -std=c++17 -Icx test/cactus_host.cpp -o cactus_host -Wl,--start-group cx/libcactus.a -Wl,--end-group -lpthread -ldl -lm -fopenmp > logs/2-gcc.log 2>&1 \
-            || g++ -O2 -std=c++17 -Icx test/cactus_host.cpp -o cactus_host cx/libcactus.a -lpthread -ldl -lm -lcurl -fopenmp >> logs/2-gcc.log 2>&1 \
-            || { grep -oE "undefined reference to .[^']+" logs/2-gcc.log | sort | uniq -c | sort -rn | head -40 > logs/2-gcc-missing.log; exit 1; }
+          # libcactus.a is built with clang's libc++ (std::__1), so link with that.
+          sudo apt-get install -y -qq clang libc++-dev libc++abi-dev libomp-dev >/dev/null
+          clang++ -O2 -std=c++17 -stdlib=libc++ -Icx test/cactus_host.cpp -o cactus_host cx/libcactus.a -lc++abi -lpthread -ldl -lm > logs/2-build.log 2>&1 \
+            || clang++ -O2 -std=c++17 -stdlib=libc++ -Icx test/cactus_host.cpp -o cactus_host cx/libcactus.a -lc++abi -lpthread -ldl -lm -fopenmp -lcurl >> logs/2-build.log 2>&1 \
+            || { grep -oE "undefined reference to .[^']+" logs/2-build.log | sort | uniq -c | sort -rn | head -40 > logs/2-build-missing.log; exit 1; }
 
       - name: Whistle hears the recordings, and "Hey Sweety" is found in them
         if: steps.harness.outcome == 'success'
