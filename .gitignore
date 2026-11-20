@@ -7,6 +7,12 @@ local.properties
 *.apk
 *.keystore
 
+# Needle 2 binaries and model are downloaded by the Android build
+blink-android/app/needle/
+blink-android/app/src/main/assets/needle2.cact
+blink-android/app/src/main/assets/NEEDLE_LICENSE.txt
+.cxx/
+
 # local tools and runtime data
 .claude/
 blink-desktop/data/

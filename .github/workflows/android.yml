@@ -35,6 +35,18 @@ jobs:
           path: ~/.android/debug.keystore
           key: blink-debug-keystore-v1
 
+      # Sweety's brain: Needle 2 by Cactus Compute (Apache-2.0), https://huggingface.co/Cactus-Compute/needle2
+      - name: Fetch Needle 2
+        working-directory: blink-android/app
+        run: |
+          base=https://huggingface.co/Cactus-Compute/needle2/resolve/main
+          mkdir -p needle/arm64-v8a src/main/assets
+          curl -fsSL --retry 3 -o needle/arm64-v8a/libneedle.a "$base/android-arm64/libneedle.a"
+          curl -fsSL --retry 3 -o needle/arm64-v8a/needle.h "$base/android-arm64/needle.h"
+          curl -fsSL --retry 3 -o src/main/assets/needle2.cact "$base/needle2.cact"
+          curl -fsSL --retry 3 -o src/main/assets/NEEDLE_LICENSE.txt "$base/LICENSE"
+          ls -la needle/arm64-v8a src/main/assets
+
       - name: Build the APK
         working-directory: blink-android
         run: |
@@ -45,15 +57,15 @@ jobs:
         if: failure()
         working-directory: blink-android
         run: |
-          grep -E "error:|e: |FAILURE|What went wrong" -A3 build.log | head -n 80 | while IFS= read -r line; do echo "::error::$line"; done
+          grep -E "error:|e: |FAILURE|What went wrong|undefined symbol|undefined reference|ld.lld|CMake Error" -A3 build.log | head -n 120 | while IFS= read -r line; do echo "::error::$line"; done
 
       - name: Name the APK
-        run: cp blink-android/app/build/outputs/apk/debug/app-debug.apk Blink-wallpaper.apk
+        run: cp blink-android/app/build/outputs/apk/debug/app-debug.apk Sweety.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Blink-wallpaper-apk
-          path: Blink-wallpaper.apk
+          name: Sweety-apk
+          path: Sweety.apk
 
       - name: Publish to the "Latest build" release
         uses: softprops/action-gh-release@v2
@@ -61,10 +73,12 @@ jobs:
           tag_name: latest
           name: Latest build
           prerelease: true
-          files: Blink-wallpaper.apk
+          files: Sweety.apk
           body: |
             Built automatically from the main branch.
 
-            **Phone (Android 8+):** open this page on your phone, tap `Blink-wallpaper.apk`, allow "Install unknown apps" for your browser when asked, then open Blink and tap "Set Blink as my wallpaper".
+            **Phone (Android 8+, 64-bit):** open this page on your phone in Chrome, tap `Sweety.apk`, allow "Install unknown apps" for Chrome when asked, then open Sweety. If Play Protect says "Unsafe app blocked", tap More details > Install anyway.
+
+            Sweety's offline brain is [Needle 2](https://huggingface.co/Cactus-Compute/needle2) by Cactus Compute (Apache-2.0).
 
             **Windows:** download `Blink-portable-win64.zip`, unzip anywhere and run `Blink.exe`. No installer or admin rights needed.

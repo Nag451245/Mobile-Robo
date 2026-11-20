@@ -51,7 +51,7 @@ import java.util.Random;
  * Floating Blink: the real 3D Blink in a small transparent window that walks, flies and perches on top of
  * the home screen and other apps, like the desktop version. Touches outside Blink go to the app underneath.
  */
-public class OverlayService extends Service implements SensorEventListener, Bus.Listener {
+public class OverlayService extends Service implements SensorEventListener, Bus.Listener, Bus.SweetyListener {
     static final String ACTION_STOP = "com.blink.buddy.STOP_FLOATING";
     static final String ACTION_HIDE = "com.blink.buddy.HIDE_FLOATING";
     static volatile boolean running;
@@ -153,14 +153,14 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
 
     private void startInForeground() {
         NotificationManager nm = getSystemService(NotificationManager.class);
-        if (nm != null) nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Floating Blink", NotificationManager.IMPORTANCE_LOW));
+        if (nm != null) nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Floating Sweety", NotificationManager.IMPORTANCE_LOW));
         PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
         PendingIntent hide = PendingIntent.getService(this, 1, new Intent(this, OverlayService.class).setAction(ACTION_HIDE), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         PendingIntent stop = PendingIntent.getService(this, 2, new Intent(this, OverlayService.class).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification n = new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_blink)
-                .setContentTitle("Blink is floating on your screen")
-                .setContentText("Drag Blink anywhere. Long-press for settings.")
+                .setContentTitle("Sweety is on your screen")
+                .setContentText("Long-press Sweety to talk. Tap here for settings.")
                 .setContentIntent(open)
                 .setOngoing(true)
                 .addAction(new Notification.Action.Builder(null, "Hide for 1 hour", hide).build())
@@ -261,6 +261,7 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
         audio = (AudioManager) getSystemService(AUDIO_SERVICE);
         if (audio != null) { headphones = anyHeadphones(); audio.registerAudioDeviceCallback(audioCallback, h); }
         Bus.add(this);
+        Bus.addSweety(this);
         running = true;
 
         nextIdle = SystemClock.uptimeMillis() + 15000;
@@ -278,6 +279,7 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
         if (sensors != null) sensors.unregisterListener(this);
         if (audio != null) audio.unregisterAudioDeviceCallback(audioCallback);
         Bus.remove(this);
+        Bus.removeSweety(this);
         try { if (root != null) wm.removeView(root); } catch (Exception ignored) { }
         try { if (bubble != null) wm.removeView(bubble); } catch (Exception ignored) { }
         if (web != null) web.destroy();
@@ -438,7 +440,10 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
                 dragging = false; samples.clear();
                 longPress = () -> {
                     if (dragging) return;
-                    Intent i = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    lastTapT = 0;
+                    act("B.emote('curious',3);B.play('nod')");
+                    say("I'm listening!", 1500);
+                    Intent i = new Intent(this, TalkActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
                     try { startActivity(i); } catch (Exception ignored) { }
                 };
                 h.postDelayed(longPress, 650);
@@ -507,6 +512,22 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
         prefs.edit().putString("skin", s.id).apply();
         act("B.wear('" + s.id + "')");
         say("Ta-da! " + s.name + " time.", 2000);
+    }
+
+    /** Replies from the assistant (talk window): show the bubble and animate the floating Sweety. */
+    @Override
+    public void onSweety(String text, String action, String emotion) {
+        h.post(() -> {
+            if (root == null) return;
+            if (text != null) say(text, Math.max(2500, text.length() * 70L));
+            if (action != null) {
+                if (action.startsWith("outfit:")) { String id = action.substring(7); prefs.edit().putString("skin", id).apply(); act("B.wear('" + id + "')"); }
+                else if ("sleep".equals(action)) act("B.sleep(true)");
+                else act("B.sleep(false);B.play('" + action + "')");
+            }
+            if (emotion != null && !"sleep".equals(action)) act("B.emote('" + emotion + "',2.6)");
+            nextIdle = SystemClock.uptimeMillis() + 15000;
+        });
     }
 
     /* ------------------------------------------------------------ phone events */

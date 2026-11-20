@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Blink</string>
-    <string name="wp_desc">Blink, a cute robot that lives on your home and lock screen and reacts when you unlock, charge, shake or swipe.</string>
+    <string name="app_name">Sweety</string>
+    <string name="wp_desc">Sweety, a cute robot helper living in a nature scene that matches her outfit. She reacts when you unlock, charge, shake or swipe.</string>
 </resources>

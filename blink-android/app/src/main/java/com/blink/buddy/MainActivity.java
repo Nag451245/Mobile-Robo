@@ -14,7 +14,10 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.provider.ContactsContract;
 import android.provider.Settings;
+import android.view.inputmethod.EditorInfo;
+import android.widget.EditText;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -26,11 +29,15 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-/** Settings and preview: set Blink as the wallpaper, try every moment, pick an outfit, switch moments on or off. */
-public class MainActivity extends Activity {
+/** Sweety's home: talk to her, preview her nature scenes, start floating Sweety, set the wallpaper, tune moments. */
+public class MainActivity extends Activity implements Assistant.Host, Ears.Callback {
+    private static final int REQ_MIC = 21, REQ_CONTACT = 22;
     private float dp;
     private SharedPreferences prefs;
     private BlinkView preview;
+    private Ears ears;
+    private TextView micBtn, reply, heardText;
+    private Assistant.NumberCallback contactCb;
 
     @Override
     protected void onCreate(Bundle state) {
@@ -44,10 +51,10 @@ public class MainActivity extends Activity {
         col.setPadding(px(18), px(18), px(18), px(32));
         col.setBackgroundColor(0xFFF6EEF8);
 
-        TextView title = text("Blink", 30, true);
+        TextView title = text("Sweety", 30, true);
         title.setTypeface(Typeface.create("sans-serif-black", Typeface.BOLD));
         col.addView(title);
-        col.addView(text("A cute robot for your home screen and lock screen. Set it as your live wallpaper, then unlock, charge, shake or swipe and watch it react.", 15, false));
+        col.addView(text("Your cute robot helper. Talk to her, and she sets alarms and reminders, calls or texts people, switches the torch, controls music and more.", 15, false));
 
         preview = new BlinkView(this);
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, px(420));
@@ -59,13 +66,47 @@ public class MainActivity extends Activity {
         preview.setClipToOutline(true);
         col.addView(preview, lp);
 
-        col.addView(header("Floating Blink (like the desktop version)"));
-        col.addView(text("Blink walks, flies and perches on top of your home screen and apps. Drag it anywhere, flick to throw, tap to poke, double-tap for a new outfit, long-press to come back here. It hides itself in landscape (videos and games).", 14, false));
-        Button start = button("Start floating Blink", true);
+        // Talk to Sweety
+        LinearLayout talk = new LinearLayout(this);
+        talk.setOrientation(LinearLayout.VERTICAL);
+        talk.setPadding(px(16), px(14), px(16), px(14));
+        GradientDrawable tb = new GradientDrawable(); tb.setColor(Color.WHITE); tb.setCornerRadius(px(20)); tb.setStroke(px(1), 0xFFE0D6EB);
+        talk.setBackground(tb);
+        TextView th = text("Talk to Sweety", 18, true);
+        talk.addView(th);
+        heardText = text("Tap Talk and say: \"set an alarm for 7 am\", \"remind me in 10 minutes to drink water\", \"call mom\", \"torch on\", \"what's my battery\".", 14, false);
+        talk.addView(heardText);
+        reply = text("", 17, true);
+        reply.setTextColor(0xFFA11F5C);
+        talk.addView(reply);
+        LinearLayout row = new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL); row.setGravity(Gravity.CENTER_VERTICAL);
+        EditText input = new EditText(this); input.setHint("Or type to Sweety"); input.setSingleLine(true); input.setImeOptions(EditorInfo.IME_ACTION_SEND);
+        input.setOnEditorActionListener((v, id, e) -> { String s = input.getText().toString(); input.setText(""); if (!s.trim().isEmpty()) ask(s); return true; });
+        micBtn = text("Talk", 16, true); micBtn.setTextColor(Color.WHITE); micBtn.setGravity(Gravity.CENTER);
+        GradientDrawable mb = new GradientDrawable(); mb.setColor(0xFFE2468C); mb.setCornerRadius(px(24)); micBtn.setBackground(mb);
+        micBtn.setOnClickListener(v -> { if (ears.listening()) ears.stop(); else listen(); });
+        row.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(px(88), px(48)); mp.leftMargin = px(10);
+        row.addView(micBtn, mp);
+        talk.addView(row);
+        CheckBox voice = new CheckBox(this); voice.setText("Sweety talks out loud"); voice.setTextColor(0xFF2A1D40);
+        voice.setChecked(Assistant.get(this).voiceOn());
+        voice.setOnCheckedChangeListener((b, on) -> Assistant.get(this).setVoiceOn(on));
+        talk.addView(voice);
+        TextView brain = text(Assistant.get(this).brainStatus(), 12, false);
+        talk.addView(brain);
+        LinearLayout.LayoutParams tlp = full(px(14));
+        col.addView(talk, tlp);
+        ears = new Ears(this, this);
+        preview.postDelayed(() -> brain.setText(Assistant.get(this).brainStatus()), 4000);
+
+        col.addView(header("Floating Sweety (like the desktop version)"));
+        col.addView(text("Sweety walks, flies and perches on top of your home screen and apps. Drag her anywhere, flick to throw, tap to poke, double-tap for a new outfit, long-press to talk. She hides in landscape (videos and games).", 14, false));
+        Button start = button("Start floating Sweety", true);
         start.setOnClickListener(v -> startFloating());
         col.addView(start, full(px(10)));
-        Button stop = button("Stop floating Blink", false);
-        stop.setOnClickListener(v -> { stopService(new Intent(this, OverlayService.class)); toast("Floating Blink stopped."); });
+        Button stop = button("Stop floating Sweety", false);
+        stop.setOnClickListener(v -> { stopService(new Intent(this, OverlayService.class)); toast("Floating Sweety stopped."); });
         col.addView(stop, full(px(8)));
         String[][] sizes = {{"100", "Small"}, {"120", "Medium"}, {"150", "Large"}};
         col.addView(chipRow(sizes, id -> {
@@ -75,16 +116,17 @@ public class MainActivity extends Activity {
         }));
 
         col.addView(header("Wallpaper (home and lock screen)"));
-        Button set = button("Set Blink as my wallpaper", false);
+        col.addView(text("Sweety lives in a nature scene that matches her outfit: sunny sky with birds, meadow with butterflies, lavender sunset, bamboo forest, rainbow garden, snowy pines, starry night, candy balloons or the ocean.", 14, false));
+        Button set = button("Set Sweety as my wallpaper", false);
         set.setOnClickListener(v -> setWallpaper());
         col.addView(set, full(px(12)));
-        col.addView(text("Tip: when asked, choose \"Home and lock screens\" so Blink shows up on both. Some phones (for example many Samsung models) only allow live wallpapers on the home screen.", 13, false));
+        col.addView(text("Tip: when asked, choose \"Home and lock screens\" so Sweety shows up on both. Some phones (for example many Samsung models) only allow live wallpapers on the home screen.", 13, false));
 
         col.addView(header("Try a moment"));
         String[][] sims = {{"screen", "Screen on"}, {"unlock", "Unlock"}, {"missed", "Missed you"}, {"swipe", "Swipe page"}, {"charge", "Plug in"},
                 {"lowbat", "Low battery"}, {"music", "Headphones"}, {"shake", "Shake"}, {"outfit", "New outfit"}, {"nudge", "30 min nudge"}};
         col.addView(chipRow(sims, id -> preview.blink.simulate(id)));
-        col.addView(text("You can also tap, double-tap and stroke Blink in the preview.", 13, false));
+        col.addView(text("You can also tap, double-tap and stroke Sweety in the preview.", 13, false));
 
         col.addView(header("Outfit"));
         String[][] outfits = new String[Skin.ALL.length][2];
@@ -109,9 +151,62 @@ public class MainActivity extends Activity {
         setContentView(scroll);
     }
 
+    /* ------------------------------------------------------------ talking */
+    private void listen() {
+        Assistant.get(this).stopTalking();
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+            return;
+        }
+        ears.listen();
+    }
+
+    private void ask(String text) {
+        heardText.setText("You: " + text);
+        Assistant.get(this).handle(text, this);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        if (code == REQ_MIC) {
+            if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) ears.listen();
+            else reply.setText("I need the microphone to hear you. You can type instead.");
+        }
+    }
+
+    @Override public void onListening(boolean on) { micBtn.setText(on ? "Stop" : "Talk"); if (on) { reply.setText("Listening…"); preview.blink.setEmotion("curious", 6); } }
+    @Override public void onPartial(String text) { heardText.setText("You: " + text + "…"); }
+    @Override public void onHeard(String text) { ask(text); }
+    @Override public void onProblem(String message) { reply.setText(message); }
+
+    @Override public void say(String text) { reply.setText(text); preview.blink.say(text, Math.max(3, text.length() / 14f)); }
+    @Override public void cue(String action, String emotion) { preview.blink.cue(action, emotion); }
+    @Override public Activity activity() { return this; }
+
+    @Override
+    public void pickContact(String forName, Assistant.NumberCallback cb) {
+        contactCb = cb;
+        try { startActivityForResult(new Intent(Intent.ACTION_PICK, ContactsContract.CommonDataKinds.Phone.CONTENT_URI), REQ_CONTACT); }
+        catch (ActivityNotFoundException e) { contactCb = null; cb.onNumber(null); }
+    }
+
+    @Override
+    protected void onActivityResult(int req, int res, Intent data) {
+        super.onActivityResult(req, res, data);
+        if (req != REQ_CONTACT || contactCb == null) return;
+        Assistant.NumberCallback cb = contactCb; contactCb = null;
+        cb.onNumber(res == RESULT_OK && data != null ? TalkActivity.numberFrom(this, data.getData()) : null);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (ears != null) ears.destroy();
+        super.onDestroy();
+    }
+
     private void startFloating() {
         if (!Settings.canDrawOverlays(this)) {
-            toast("Turn on \"Allow display over other apps\" for Blink, then come back and tap Start again.");
+            toast("Turn on \"Allow display over other apps\" for Sweety, then come back and tap Start again.");
             try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))); }
             catch (ActivityNotFoundException e) { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)); }
             return;
@@ -120,7 +215,7 @@ public class MainActivity extends Activity {
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 7);
         }
         startForegroundService(new Intent(this, OverlayService.class));
-        toast("Blink is floating! Go to your home screen.");
+        toast("Sweety is floating! Go to your home screen.");
     }
 
     private void setWallpaper() {
@@ -129,7 +224,7 @@ public class MainActivity extends Activity {
             i.putExtra(WallpaperManager.EXTRA_LIVE_WALLPAPER_COMPONENT, new ComponentName(this, BlinkWallpaperService.class));
             startActivity(i);
         } catch (ActivityNotFoundException e) {
-            try { startActivity(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)); toast("Pick Blink from the list."); }
+            try { startActivity(new Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER)); toast("Pick Sweety from the list."); }
             catch (ActivityNotFoundException e2) { toast("This phone does not support live wallpapers."); }
         }
     }

@@ -30,6 +30,7 @@ final class Blink {
     final SharedPreferences prefs;
     final float dp;
     final Painter painter = new Painter();
+    private final Scene scene = new Scene();
     private final Random rnd = new Random();
 
     int W = 1080, H = 2200, pages = 1;
@@ -656,8 +657,7 @@ final class Blink {
     }
 
     void draw(Canvas c) {
-        if (bgDirty || bg == null) buildBackground();
-        c.drawBitmap(bg, 0, 0, null);
+        scene.draw(c, skin.id, W, H, groundY, t, dp, night());
         float sx = screenX();
         float bob = mode == HOVER ? sin(t * 2.2f) * 5 * dp : 0;
         float headTop = y + bob - hPx() * cur[SY] - cur[ROOTY] * u;
@@ -751,6 +751,16 @@ final class Blink {
             default: break;
         }
         pp.setAlpha(255);
+    }
+
+    /** Animation cue from the assistant: an action name (or "outfit:id", "sleep") plus an emotion. */
+    void cue(String act, String emotion) {
+        if (act != null) {
+            if (act.startsWith("outfit:")) { interrupt(); wear(Skin.byId(act.substring(7)), true); }
+            else if ("sleep".equals(act)) { interrupt(); sleeping = true; emoUntil = Float.MAX_VALUE; }
+            else { sleeping = false; play(act); }
+        }
+        if (emotion != null && !"sleep".equals(act)) setEmotion(emotion, 2.6f);
     }
 
     /** Lets the preview screen simulate phone events. */
