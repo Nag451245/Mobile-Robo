@@ -25,8 +25,7 @@ import android.os.PowerManager;
 import android.util.Log;
 
 import java.util.Arrays;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.Locale;
 
 /**
  * "Hey Sweety": listens for the wake phrase while the screen is on and unlocked, fully on the phone with Whistle.
@@ -38,15 +37,6 @@ public class WakeService extends Service {
     private static final String ACTION_STOP = "com.blink.buddy.WAKE_STOP";
     private static final int RATE = 16000, FRAME = RATE / 10; // 100 ms frames
     private static final int NOTE_ID = 7;
-
-    /**
-     * "hey sweety", "hi sweetie", "ok sweaty", "hey sweet tea"… as Whistle may spell it. The name alone counts only
-     * at the start of a phrase, so "you're such a sweetie" in a video doesn't wake her.
-     */
-    private static final String NAME = "(?:swee?t(?:y|ie|ey|i|ee|ty|tie|ies|ys)|sweaty|swetty|swety|suit(?:e)?y|sweet\\s?(?:tea|e|ee|y))";
-    static final Pattern WAKE = Pattern.compile(
-        "(?:^\\W*(?:a\\W+)?" + NAME + "|\\b(?:hey|hay|hei|hi|hello|ok|okay|oh)\\W+(?:" + NAME + "|sweet\\w*|swee\\w*|swi\\w*ty|sweat\\w*))\\b[,.!?]*",
-        Pattern.CASE_INSENSITIVE);
 
     private static volatile boolean running;
     private static volatile long holdUntil;
@@ -167,6 +157,7 @@ public class WakeService extends Service {
 
     private boolean shouldListen() {
         if (!alive) return false;
+        refreshActive(); // cheap, and some phones send the screen broadcasts late
         if (!active) { state = "paused: screen is off or locked"; return false; }
         if (busy) { state = "thinking about what it heard…"; return false; }
         if (System.currentTimeMillis() <= holdUntil) { state = "paused while the talk window uses the mic"; return false; }
@@ -185,6 +176,8 @@ public class WakeService extends Service {
         float[] pre = new float[RATE * 3 / 10]; // 300 ms before the voice starts
         int preN = 0;
         long quietSince = 0;
+        long statSince = System.currentTimeMillis(), zeroSince = 0;
+        double maxRms = 0;
         while (alive) {
             try {
                 if (!shouldListen()) {
@@ -200,12 +193,26 @@ public class WakeService extends Service {
                     ar = openMic();
                     if (ar == null) { state = "microphone busy or blocked, retrying…"; Thread.sleep(3000); continue; }
                 }
-                if (!inSpeech) state = awaitUntil > 0 ? "listening for your request…" : "listening for \"Hey Sweety\"…";
+                if (!inSpeech) state = (awaitUntil > 0 ? "listening for your request…" : "listening for \"Hey Sweety\"…") + levelText();
                 int r = ar.read(buf, 0, buf.length);
                 if (r <= 0) { closeMic(ar); ar = null; Thread.sleep(500); continue; }
+                feed(buf, r);
                 double sum = 0;
                 for (int i = 0; i < r; i++) { float v = buf[i] / 32768f; sum += v * v; }
                 double rms = Math.sqrt(sum / r);
+                long now = System.currentTimeMillis();
+                if (sum > 0) zeroSince = 0; else if (zeroSince == 0) zeroSince = now;
+                maxRms = Math.max(maxRms, rms);
+                if (now - statSince >= 3000) {
+                    level = maxRms;
+                    Log.i(TAG, String.format(Locale.ROOT, "mic: loudest %.4f, room noise %.4f, bar %.4f", maxRms, noise, Math.max(0.005, noise * 2.6)));
+                    statSince = now; maxRms = 0;
+                }
+                if (zeroSince > 0 && now - zeroSince > 3000) {
+                    // Android hands an app pure silence when it blocks the mic (another app recording, or a background limit).
+                    state = "the microphone gives only silence: another app may be using it, or the phone blocks it in the background";
+                    continue;
+                }
                 // Phones record voice-recognition audio quite quietly, so the bar is low and follows the room's noise.
                 double threshold = Math.max(0.005, noise * 2.6);
                 boolean voiced = rms > threshold;
@@ -215,7 +222,7 @@ public class WakeService extends Service {
                     // keep a short pre-roll so the start of "hey" isn't cut off
                     for (int i = 0; i < r; i++) { pre[preN % pre.length] = buf[i] / 32768f; preN++; }
                     if (voiced) {
-                        inSpeech = true; silentMs = 0; speechMs = 100; n = 0;
+                        inSpeech = true; silentMs = 0; speechMs = 100; n = 0; speechStart = now;
                         int have = Math.min(preN, pre.length);
                         for (int i = 0; i < have; i++) clip[n++] = pre[(preN - have + i) % pre.length];
                         preN = 0;
@@ -232,9 +239,11 @@ public class WakeService extends Service {
                 inSpeech = false;
                 if (speechMs >= 300) {
                     final float[] audio = Arrays.copyOf(clip, n);
+                    Log.i(TAG, "heard a sound for " + (n * 1000 / RATE) + " ms, transcribing");
                     busy = true;
                     closeMic(ar); ar = null; // free the mic while thinking
-                    main.post(() -> heard(audio));
+                    final long began = speechStart;
+                    main.post(() -> heard(audio, began));
                 }
                 n = 0;
             } catch (InterruptedException e) {
@@ -246,6 +255,37 @@ public class WakeService extends Service {
             }
         }
         if (ar != null) closeMic(ar);
+    }
+
+    /*
+     * Test hook for the CI emulator, debug builds only: a 16 kHz 16-bit mono recording placed in the app's private
+     * files as mic-test.pcm (only adb run-as can put it there) replaces what the microphone hears, then is deleted.
+     * The real microphone is still opened and read, so the background-recording path is tested too.
+     */
+    private short[] feed;
+    private int feedPos;
+    private long feedCheck;
+
+    private void feed(short[] buf, int r) {
+        if (feed == null) {
+            long now = System.currentTimeMillis();
+            if (now - feedCheck < 500) return;
+            feedCheck = now;
+            if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0) return;
+            java.io.File f = new java.io.File(getFilesDir(), "mic-test.pcm");
+            if (!f.exists()) return;
+            try {
+                byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
+                short[] s = new short[b.length / 2];
+                java.nio.ByteBuffer.wrap(b).order(java.nio.ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(s);
+                feed = s; feedPos = 0;
+                Log.i(TAG, "test recording: " + (s.length * 1000 / RATE) + " ms");
+            } catch (Exception e) { Log.w(TAG, "test recording unreadable", e); }
+            f.delete();
+            if (feed == null) return;
+        }
+        for (int i = 0; i < r; i++) buf[i] = feedPos < feed.length ? feed[feedPos++] : 0;
+        if (feedPos >= feed.length) feed = null;
     }
 
     private AudioRecord openMic() {
@@ -271,7 +311,10 @@ public class WakeService extends Service {
     }
 
     /* ------------------------------------------------------------ what was said */
-    private void heard(float[] audio) {
+    private long speechStart;
+
+    /** began: when the voice started, so a request said within the 8 s after "Yes?" counts however long Whistle takes. */
+    private void heard(float[] audio, long began) {
         Assistant a = Assistant.get(this);
         if (!a.localHearing()) { busy = false; state = "can't hear: Whistle (offline hearing) didn't load"; updateNote("Hey Sweety needs Whistle, Sweety's offline hearing, which didn't load on this phone."); return; }
         // Turn quiet recordings up so Whistle hears them clearly.
@@ -281,12 +324,13 @@ public class WakeService extends Service {
         a.transcribe(audio, text -> {
             String t = text == null ? "" : text.trim();
             if (!t.isEmpty()) lastHeard = t;
-            boolean awaiting = awaitUntil > 0 && System.currentTimeMillis() < awaitUntil;
+            Log.i(TAG, "Whistle heard: \"" + t + "\"");
+            boolean awaiting = awaitUntil > 0 && began < awaitUntil;
             if (t.isEmpty()) { busy = false; return; }
             if (awaiting) { awaitUntil = 0; command(t); return; }
-            Matcher m = WAKE.matcher(t);
-            if (!m.find()) { busy = false; return; }
-            String rest = t.substring(m.end()).replaceAll("^[\\s,.!?]+", "").replaceAll("[.!]+$", "").trim();
+            String rest = WakePhrase.find(t);
+            if (rest == null) { busy = false; updateNote("Heard “" + shorten(t) + "”. Start with “Hey Sweety” to wake me."); return; }
+            Log.i(TAG, "wake phrase found, rest: \"" + rest + "\"");
             if (rest.split("\\s+").length >= 2 || rest.length() > 6) { command(rest); return; }
             // Just "Hey Sweety": answer and listen for the command.
             String[] hi = {"Yes?", "I'm here!", "Hi! What's up?", "Yes, sweetie?"};
@@ -295,9 +339,20 @@ public class WakeService extends Service {
             updateNote("Listening… " + say);
             int ms = a.voiceOn() ? Sounds.play("hello") : 0;
             main.postDelayed(() -> a.speak(say), ms + 60);
-            awaitUntil = System.currentTimeMillis() + 8000;
+            awaitUntil = System.currentTimeMillis() + ms + 9000; // her "Yes?" plus 8 s to ask
             busy = false;
         });
+    }
+
+    private static String shorten(String t) { return t.length() > 60 ? t.substring(0, 60) + "…" : t; }
+
+    /** Loudest mic level in the last few seconds (-1 before the first reading). */
+    static volatile double level = -1;
+
+    private static String levelText() {
+        double l = level;
+        if (l < 0) return "";
+        return l < 0.002 ? " (mic very quiet)" : String.format(Locale.ROOT, " (mic level %.3f)", l);
     }
 
     private int handled;
@@ -305,6 +360,7 @@ public class WakeService extends Service {
     private void command(String text) {
         final int seq = ++handled;
         main.postDelayed(() -> { if (seq == handled) busy = false; }, 25000); // never stay deaf if a reply goes missing
+        Log.i(TAG, "command: \"" + text + "\"");
         updateNote("You said: \"" + text + "\"");
         Bus.sweety(null, "nod", "curious");
         Assistant.get(this).handle(text, new WakeHost(text));

@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.AlarmClock;
 import android.speech.tts.TextToSpeech;
+import android.util.Log;
 import android.view.KeyEvent;
 
 import org.json.JSONArray;
@@ -44,6 +45,7 @@ final class Assistant {
 
     interface NumberCallback { void onNumber(String number); }
 
+    private static final String TAG = "Sweety";
     private static Assistant instance;
 
     static synchronized Assistant get(Context c) {
@@ -169,27 +171,18 @@ final class Assistant {
             if (needle.textReady()) {
                 try { call = needle.parse(text); } catch (Throwable ignored) { }
             }
-            // Trust Needle when it is confident; otherwise fall back to the rules.
-            // When no command words matched, Needle must be very sure, so small talk reaches the chat brain.
-            float bar = ruled == null ? .8f : .45f;
-            if (call == null || call.confidence < bar || !known(call.name)) call = ruled;
-            else if (ruled != null && ("ask".equals(ruled.name) || "read_notes".equals(ruled.name))) call = ruled;
-            final Call fc = call;
+            // Trust Needle when it is confident and the sentence fits its tool; otherwise the rules, otherwise chat.
+            final Call fc = RuleBrain.decide(call, ruled, text);
+            Log.i(TAG, "\"" + text + "\" -> needle " + (call == null ? "none" : call.name + " " + call.confidence)
+                + ", rules " + (ruled == null ? "none" : ruled.name) + " => " + (fc == null ? "chat" : fc.name));
             main.post(() -> run(fc, text, host));
         });
     }
 
     private String pick(String... options) { return options[rnd.nextInt(options.length)]; }
 
-    private static boolean known(String n) {
-        switch (n) {
-            case "set_alarm": case "set_timer": case "call_contact": case "send_message": case "flashlight":
-            case "media_control": case "phone_status": case "take_note": case "sweety_fun": return true;
-            default: return false;
-        }
-    }
-
     private void reply(Host host, String text, String action, String emotion) {
+        Log.i(TAG, "reply [" + action + "/" + emotion + "]: " + text);
         if (giggly(text) && ("nod".equals(action) || "wave".equals(action))) { action = "laugh"; emotion = "laugh"; }
         host.say(text);
         host.cue(action, emotion);
@@ -384,7 +377,7 @@ final class Assistant {
         chatWorker.execute(() -> {
             String answer = chatBrain.reply(text);
             main.post(() -> {
-                if (answer == null) { canned(text, host); return; }
+                if (answer == null) { Log.w(TAG, "chat brain gave no answer: " + chatBrain.status()); canned(text, host); return; }
                 String low = answer.toLowerCase(Locale.ROOT);
                 String emotion = low.contains("sorry") || low.contains(" sad") ? "sad"
                     : low.contains("love") ? "love"
@@ -421,7 +414,7 @@ final class Assistant {
         else if (s.contains("love you")) reply(host, "Aww, I love you too!", "jump", "love");
         else if (s.contains("what can you do") || s.contains("help")) reply(host, "I can set alarms, timers and reminders, call or text people, switch the torch, control your music, tell the time, date or battery, take notes, dance, and chat with you!", "wave", "happy");
         else if (!chatBrain.downloaded()) reply(host, "I can't chat about that yet. Download my chat brain in the Sweety app and I'll get much smarter!", "shrug", "curious");
-        else reply(host, "Hmm, my thinking got tangled. Can you ask me that again?", "shrug", "curious");
+        else reply(host, "Hmm, my chat brain hiccuped. " + chatBrain.status() + ". Try asking again?", "shrug", "curious");
     }
 
     /* ------------------------------------------------------------ helpers */

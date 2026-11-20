@@ -109,6 +109,44 @@ final class RuleBrain {
         return null;
     }
 
+    /**
+     * Needle picks a tool for almost anything, so small talk ("are you dumb?") can come back as a trick.
+     * A command only counts when the sentence has at least one word that belongs to it; otherwise it's chat.
+     */
+    /** Picks between Needle's call and the rules' call; null means "just chat". */
+    static Call decide(Call needle, Call ruled, String text) {
+        if (ruled != null && ("ask".equals(ruled.name) || "read_notes".equals(ruled.name))) return ruled;
+        // When no command words matched, Needle must be very sure, so small talk reaches the chat brain.
+        float bar = ruled == null ? .8f : .45f;
+        if (needle == null || needle.confidence < bar || !known(needle.name) || !plausible(needle.name, text)) return ruled;
+        return needle;
+    }
+
+    static boolean known(String n) {
+        switch (n) {
+            case "set_alarm": case "set_timer": case "call_contact": case "send_message": case "flashlight":
+            case "media_control": case "phone_status": case "take_note": case "sweety_fun": return true;
+            default: return false;
+        }
+    }
+
+    static boolean plausible(String tool, String text) {
+        String k;
+        switch (tool) {
+            case "set_alarm": k = "alarm|wake me|wake up|morning"; break;
+            case "set_timer": k = "timer|remind|reminder|countdown|minutes?|mins?|seconds?|hours?"; break;
+            case "call_contact": k = "call|ring|phone|dial"; break;
+            case "send_message": k = "message|text|sms|whatsapp|send|msg"; break;
+            case "flashlight": k = "torch|flash\\w*|light"; break;
+            case "media_control": k = "music|song|songs|play|pause|next|previous|skip|volume|louder|quieter|softer|track|resume"; break;
+            case "phone_status": k = "battery|charge|charging|time|clock|date|what day|which day"; break;
+            case "take_note": k = "note|notes|write|remember|jot"; break;
+            case "sweety_fun": k = "danc\\w*|party|groove|boogie|jump|hop|spin|twirl|flip|backflip|somersault|cart ?wheel\\w*|wheeler|wheelie|laugh|giggle|joke|jokes|funny|sleep|nap|night|outfit|clothes|dress|wear|costume|wave|kitty|bunny|panda|snow|sunny|trick|tricks"; break;
+            default: return true;
+        }
+        return Pattern.compile("\\b(" + k + ")\\b", Pattern.CASE_INSENSITIVE).matcher(text).find();
+    }
+
     private static String cleanName(String who) {
         return who.replaceAll("\\b(please|now|for me|on whatsapp|on my phone|number)\\b", "").replaceAll("\\s+", " ").trim();
     }

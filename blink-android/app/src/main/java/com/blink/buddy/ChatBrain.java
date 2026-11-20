@@ -130,48 +130,84 @@ final class ChatBrain {
     private synchronized boolean ensure() {
         if (engine != null) return true;
         if (!downloaded()) return false;
+        long t0 = System.currentTimeMillis();
+        Engine e = null;
         try {
             // The cache dir lets LiteRT-LM keep its prepared weights, so later starts are quicker.
-            Engine e = new Engine(new EngineConfig(file().getAbsolutePath(), new Backend.CPU(), null, null, null, null, app.getCacheDir().getAbsolutePath()));
+            e = new Engine(new EngineConfig(file().getAbsolutePath(), new Backend.CPU(), null, null, null, null, app.getCacheDir().getAbsolutePath()));
             e.initialize();
             engine = e;
             newConversation();
             failure = null;
+            Log.i(TAG, "chat brain ready in " + (System.currentTimeMillis() - t0) + " ms (" + mode + " setup)");
             return true;
         } catch (Throwable t) {
             Log.w(TAG, "chat engine failed", t);
-            failure = "could not start (" + t.getClass().getSimpleName() + ")";
+            failure = "could not start (" + why(t) + ")";
+            if (e != null) { try { e.close(); } catch (Throwable ignored) { } }
             engine = null;
             return false;
         }
     }
 
+    /** The error in a few words, for the status line. */
+    static String why(Throwable t) {
+        String m = t.getMessage();
+        String s = t.getClass().getSimpleName() + (m == null || m.isEmpty() ? "" : ": " + m.replaceAll("\\s+", " "));
+        return s.length() > 160 ? s.substring(0, 160) + "…" : s;
+    }
+
+    /** "full": persona, example chats and lively sampling. "plain": persona only, in case this engine refuses the rest. */
+    private String mode = "full";
+
     private void newConversation() {
-        if (conv != null) { try { conv.close(); } catch (Exception ignored) { } }
-        // A little randomness (temperature 0.8) keeps her lively instead of repeating the same safe line.
-        conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(PERSONA), examples(),
-            Collections.emptyList(), new SamplerConfig(40, 0.95, 0.8, (int) (System.nanoTime() & 0x7fffffff))));
+        if (conv != null) { try { conv.close(); } catch (Throwable ignored) { } conv = null; }
         turns = 0;
+        if ("full".equals(mode)) {
+            try {
+                // A little randomness (temperature 0.8) keeps her lively instead of repeating the same safe line.
+                conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(PERSONA), examples(),
+                    Collections.emptyList(), new SamplerConfig(40, 0.95, 0.8, (int) (System.nanoTime() & 0x7fffffff))));
+                return;
+            } catch (Throwable t) {
+                Log.w(TAG, "full chat setup failed, using the plain one", t);
+                mode = "plain";
+            }
+        }
+        conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(PERSONA)));
     }
 
     /** One short reply in Sweety's voice, or null if the chat brain isn't available. Blocking: call off the main thread. */
     synchronized String reply(String text) {
         if (!ensure()) return null;
-        try {
-            if (turns >= 4) newConversation(); // keeps the small context window fresh
-            turns++;
-            Message m = conv.sendMessage(text);
-            StringBuilder sb = new StringBuilder();
-            for (Content c : m.getContents().getContents()) if (c instanceof Content.Text) sb.append(((Content.Text) c).getText());
-            String out = sb.toString().replaceAll("(?s)<think>.*?</think>", "").replaceAll("[*#_`]", "")
-                .replaceAll("[\\x{1F000}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{FE0F}\\x{200D}]", "") // emojis
-                .replaceAll("^(?i)sweety\\s*:\\s*", "").replaceAll("\\s+", " ").trim();
-            if (out.length() > 400) { int cut = out.lastIndexOf('.', 400); out = out.substring(0, cut > 80 ? cut + 1 : 400); }
-            return out.isEmpty() ? null : out;
-        } catch (Throwable t) {
-            Log.w(TAG, "chat failed", t);
-            try { newConversation(); } catch (Throwable ignored) { }
-            return null;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            long t0 = System.currentTimeMillis();
+            try {
+                if (conv == null || turns >= 4) newConversation(); // keeps the small context window fresh
+                turns++;
+                String out = clean(conv.sendMessage(text));
+                Log.i(TAG, "chat reply in " + (System.currentTimeMillis() - t0) + " ms (" + mode + "): " + out);
+                failure = null;
+                return out.isEmpty() ? null : out;
+            } catch (Throwable t) {
+                Log.w(TAG, "chat failed (try " + (attempt + 1) + ", " + mode + " setup)", t);
+                failure = "last reply failed (" + why(t) + ")";
+                mode = "plain"; // the fancy setup may be what broke; the second try uses the plain one
+                try { newConversation(); }
+                catch (Throwable t2) { Log.w(TAG, "could not reset the chat", t2); failure = "could not reset (" + why(t2) + ")"; return null; }
+            }
         }
+        return null;
+    }
+
+    static String clean(Message m) {
+        StringBuilder sb = new StringBuilder();
+        if (m != null && m.getContents() != null)
+            for (Content c : m.getContents().getContents()) if (c instanceof Content.Text) sb.append(((Content.Text) c).getText());
+        String out = sb.toString().replaceAll("(?s)<think>.*?</think>", "").replaceAll("(?s)<think>.*", "").replaceAll("[*#_`]", "")
+            .replaceAll("[\\x{1F000}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{FE0F}\\x{200D}]", "") // emojis
+            .replaceAll("^(?i)sweety\\s*:\\s*", "").replaceAll("\\s+", " ").trim();
+        if (out.length() > 400) { int cut = out.lastIndexOf('.', 400); out = out.substring(0, cut > 80 ? cut + 1 : 400); }
+        return out;
     }
 }
