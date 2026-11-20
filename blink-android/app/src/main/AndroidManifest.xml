@@ -10,8 +10,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Sweety hears you only while the talk window is open -->
+    <!-- Sweety hears you in the talk window, and for "Hey Sweety" while the screen is on (if you turn it on) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Only used once, to download the optional chat brain -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- Set alarms and timers in the Clock app -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
@@ -71,5 +74,10 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Animated companion character the user places on top of other apps" />
         </service>
+
+        <service
+            android:name=".WakeService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
     </application>
 </manifest>

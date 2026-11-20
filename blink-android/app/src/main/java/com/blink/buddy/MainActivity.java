@@ -31,7 +31,10 @@ import android.widget.Toast;
 
 /** Sweety's home: talk to her, preview her nature scenes, start floating Sweety, set the wallpaper, tune moments. */
 public class MainActivity extends Activity implements Assistant.Host, Ears.Callback {
-    private static final int REQ_MIC = 21, REQ_CONTACT = 22;
+    private static final int REQ_MIC = 21, REQ_CONTACT = 22, REQ_WAKE = 23;
+    private TextView brainLine, chatInfo;
+    private CheckBox wakeBox;
+    private Button chatBtn;
     private float dp;
     private SharedPreferences prefs;
     private BlinkView preview;
@@ -98,7 +101,26 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         LinearLayout.LayoutParams tlp = full(px(14));
         col.addView(talk, tlp);
         ears = new Hearing(this, this);
-        preview.postDelayed(() -> brain.setText(Assistant.get(this).brainStatus()), 4000);
+        brainLine = brain;
+        preview.postDelayed(this::refreshBrain, 4000);
+
+        // Hey Sweety: hands-free while the screen is on
+        col.addView(header("Hey Sweety (hands-free)"));
+        col.addView(text("Say \"Hey Sweety\" anywhere on your phone, then your request, like \"Hey Sweety, set an alarm for 7 am\". She listens only while the screen is on and unlocked, everything stays on the phone, and a notification shows while it's on. Uses a little more battery.", 14, false));
+        wakeBox = new CheckBox(this); wakeBox.setText("Listen for \"Hey Sweety\""); wakeBox.setTextColor(0xFF2A1D40); wakeBox.setTextSize(16);
+        wakeBox.setChecked(WakeService.enabled(this));
+        wakeBox.setOnCheckedChangeListener((b, on) -> setWake(on));
+        col.addView(wakeBox, full(px(6)));
+
+        // Chat brain: a small offline language model for real conversations
+        col.addView(header("Chat brain"));
+        col.addView(text("Needle 3 handles commands. For chatting and questions, Sweety needs a small chat brain (Qwen3-0.6B, about 330 MB). It downloads once, then works offline. Use Wi-Fi.", 14, false));
+        chatBtn = button("Download chat brain (330 MB)", true);
+        chatBtn.setOnClickListener(v -> downloadChat());
+        col.addView(chatBtn, full(px(10)));
+        chatInfo = text("", 13, false);
+        col.addView(chatInfo);
+        refreshChat();
 
         col.addView(header("Floating Sweety (like the desktop version)"));
         col.addView(text("Sweety walks, flies and perches on top of your home screen and apps. Drag her anywhere, flick to throw, tap to poke, double-tap for a new outfit, long-press to talk. She hides in landscape (videos and games).", 14, false));
@@ -166,8 +188,86 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         Assistant.get(this).handle(text, this);
     }
 
+    /* ------------------------------------------------------------ Hey Sweety + chat brain */
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Android only lets the microphone service start while Sweety is on screen, so (re)start it here.
+        WakeService.start(this);
+        Assistant.get(this).warmChat();
+        if (wakeBox != null && wakeBox.isChecked() != WakeService.enabled(this)) {
+            syncing = true; wakeBox.setChecked(WakeService.enabled(this)); syncing = false;
+        }
+        refreshChat();
+    }
+
+    private boolean syncing;
+
+    private void setWake(boolean on) {
+        if (syncing) return;
+        if (!on) { WakeService.setEnabled(this, false); toast("Hey Sweety is off."); return; }
+        java.util.List<String> need = new java.util.ArrayList<>();
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) need.add(Manifest.permission.RECORD_AUDIO);
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) need.add(Manifest.permission.POST_NOTIFICATIONS);
+        if (!need.isEmpty()) { requestPermissions(need.toArray(new String[0]), REQ_WAKE); return; }
+        WakeService.setEnabled(this, true);
+        if (!Settings.canDrawOverlays(this)) {
+            toast("Hey Sweety is on. Also allow \"Display over other apps\" so she can open the clock or dialer from any app.");
+            try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))); }
+            catch (ActivityNotFoundException e) { /* optional */ }
+        } else {
+            toast("Hey Sweety is on. Try: \"Hey Sweety, what time is it?\"");
+        }
+    }
+
+    private void refreshBrain() { if (brainLine != null) brainLine.setText(Assistant.get(this).brainStatus()); }
+
+    private void refreshChat() {
+        if (chatBtn == null) return;
+        ChatBrain cb = Assistant.get(this).chatBrain();
+        if (cb.downloaded()) {
+            chatBtn.setVisibility(View.GONE);
+            chatInfo.setText("Chat brain downloaded. Ask Sweety anything: \"tell me a story\", \"why is the sky blue?\", \"I'm bored\".");
+        } else if (!cb.downloading()) {
+            chatBtn.setVisibility(View.VISIBLE);
+            chatBtn.setEnabled(true);
+        }
+        refreshBrain();
+    }
+
+    private void downloadChat() {
+        ChatBrain cb = Assistant.get(this).chatBrain();
+        chatBtn.setEnabled(false);
+        chatInfo.setText("Starting download…");
+        cb.download(new ChatBrain.Progress() {
+            @Override public void onProgress(long done, long total) {
+                long mb = done >> 20, all = total >> 20;
+                chatInfo.setText(total > 0 ? "Downloading… " + mb + " of " + all + " MB (" + (done * 100 / total) + "%)" : "Downloading… " + mb + " MB");
+            }
+            @Override public void onDone(boolean ok, String message) {
+                chatInfo.setText(message);
+                chatBtn.setEnabled(true);
+                if (ok) {
+                    Assistant.get(MainActivity.this).warmChat();
+                    refreshChat();
+                    say("Yay, I feel so much smarter now! Ask me anything.");
+                    cue("jump", "happy");
+                    Assistant.get(MainActivity.this).speak("Yay, I feel so much smarter now! Ask me anything.");
+                } else {
+                    chatBtn.setText("Resume download");
+                }
+            }
+        });
+    }
+
     @Override
     public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+        if (code == REQ_WAKE) {
+            boolean mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED;
+            if (mic) setWake(true);
+            else { syncing = true; wakeBox.setChecked(false); syncing = false; toast("Hey Sweety needs the microphone."); }
+            return;
+        }
         if (code == REQ_MIC) {
             if (results.length > 0 && results[0] == PackageManager.PERMISSION_GRANTED) ears.listen();
             else reply.setText("I need the microphone to hear you. You can type instead.");

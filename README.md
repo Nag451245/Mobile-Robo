@@ -20,12 +20,14 @@ Every push to `main` rebuilds the APK and the Windows zip with GitHub Actions an
    - "call mom", "text dad saying I'll be late", "send a WhatsApp to Ravi saying good morning"
    - "turn on the torch", "next song", "volume up", "what's my battery", "what time is it"
    - "take a note buy milk", "read my notes", "dance", "tell me a joke", "wear the bunny outfit"
-4. Tap **Start floating Sweety** and allow **Display over other apps**. On the home screen: drag her anywhere, tap to poke, double-tap for a new outfit, **long-press to talk**.
-5. Optional: **Set Sweety as my wallpaper** (choose Home and lock screens) to see her nature scenes.
+4. **Hey Sweety (hands-free):** tick **Listen for "Hey Sweety"** and allow the microphone. While the screen is on and unlocked, say "Hey Sweety, set an alarm for 7 am" from any app (or just "Hey Sweety", wait for "Yes?", then ask). The mic closes when the screen turns off or locks; a notification shows while it's on.
+5. **Chat brain:** tap **Download chat brain (330 MB)** once, on Wi-Fi. After that Sweety really chats and answers questions offline, using [Qwen3-0.6B](https://huggingface.co/litert-community/Qwen3-0.6B-int4) on Google's [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM). Commands still go through Needle 3.
+6. Tap **Start floating Sweety** and allow **Display over other apps**. On the home screen: drag her anywhere, tap to poke, double-tap for a new outfit, **long-press to talk**.
+7. Optional: **Set Sweety as my wallpaper** (choose Home and lock screens) to see her nature scenes.
 
 Calls and messages always open your dialer or messaging app with everything filled in; you press call or send. The first time you say a name, Sweety shows the contact picker once and remembers your choice, so she never needs access to all your contacts.
 
-Permissions: microphone (only while the talk window is open), display over other apps, notifications for the floating service, and setting alarms. No SMS, notification, contacts or accessibility access.
+Permissions: microphone (in the talk window, and for Hey Sweety only while the screen is on, if you turn it on), display over other apps, notifications for the floating service, setting alarms, and internet (only to download the chat brain once). No SMS, notification, contacts or accessibility access. Nothing you say leaves the phone.
 
 Needs Android 8 or later on a 64-bit phone. Hearing (Whistle) supports English, German, French, Spanish, Italian, Dutch and Polish; if it can't load, Sweety falls back to the phone's speech service.
 
@@ -39,4 +41,4 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
 
 ## Credits
 
-Sweety's offline brain: [Cactus runtime](https://huggingface.co/Cactus-Compute/cactus), [Needle 3](https://huggingface.co/Cactus-Compute/needle3) and [Whistle](https://huggingface.co/Cactus-Compute/whistle) by Cactus Compute, Apache-2.0. The build downloads them automatically; they are not stored in this repo.
+Sweety's offline brain: [Cactus runtime](https://huggingface.co/Cactus-Compute/cactus), [Needle 3](https://huggingface.co/Cactus-Compute/needle3) and [Whistle](https://huggingface.co/Cactus-Compute/whistle) by Cactus Compute, Apache-2.0. The build downloads them automatically; they are not stored in this repo. Chat brain: [Qwen3-0.6B](https://huggingface.co/litert-community/Qwen3-0.6B-int4) (Apache-2.0) on [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) (Apache-2.0), downloaded inside the app.

@@ -28,8 +28,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Sweety the assistant: understands a sentence (Needle 2 first, rules as backup), performs the action with
- * ordinary Android intents, and answers out loud. Calls and messages always open the dialer or messaging app
+ * Sweety the assistant: understands a sentence (Needle 3 first, rules as backup), performs the action with
+ * ordinary Android intents, and answers out loud. Anything that isn't a command goes to the chat brain
+ * (Qwen3-0.6B, offline) once it is downloaded. Calls and messages always open the dialer or messaging app
  * so the user presses the final button.
  */
 final class Assistant {
@@ -56,6 +57,8 @@ final class Assistant {
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final NeedleBrain needle = new NeedleBrain();
     private final RuleBrain rules = new RuleBrain();
+    private final ChatBrain chatBrain;
+    private final ExecutorService chatWorker = Executors.newSingleThreadExecutor();
     private final Random rnd = new Random();
     private TextToSpeech tts;
     private boolean ttsReady;
@@ -63,6 +66,7 @@ final class Assistant {
     private Assistant(Context app) {
         this.app = app;
         this.prefs = app.getSharedPreferences("blink", Context.MODE_PRIVATE);
+        this.chatBrain = new ChatBrain(app);
         tts = new TextToSpeech(app, status -> {
             ttsReady = status == TextToSpeech.SUCCESS;
             if (ttsReady) { tts.setPitch(1.55f); tts.setSpeechRate(1.05f); }
@@ -70,7 +74,15 @@ final class Assistant {
         worker.execute(() -> needle.ensure(app));
     }
 
-    String brainStatus() { return needle.status; }
+    String brainStatus() { return needle.status + "\n" + chatBrain.status(); }
+
+    ChatBrain chatBrain() { return chatBrain; }
+
+    /** Loads the chat brain in the background so the first answer comes quicker. */
+    void warmChat() { if (chatBrain.downloaded() && !chatBrain.ready()) chatWorker.execute(chatBrain::warm); }
+
+    /** True while Sweety is speaking, so the wake-word listener doesn't hear herself. */
+    boolean talking() { return ttsReady && tts.isSpeaking(); }
 
     /** True when Whistle is loaded, so Sweety can hear fully offline. */
     boolean localHearing() { return needle.speechReady(); }
@@ -108,7 +120,9 @@ final class Assistant {
                 try { call = needle.parse(text); } catch (Throwable ignored) { }
             }
             // Trust Needle when it is confident; otherwise fall back to the rules.
-            if (call == null || call.confidence < .45f || !known(call.name)) call = ruled;
+            // When no command words matched, Needle must be very sure, so small talk reaches the chat brain.
+            float bar = ruled == null ? .8f : .45f;
+            if (call == null || call.confidence < bar || !known(call.name)) call = ruled;
             else if (ruled != null && ("ask".equals(ruled.name) || "read_notes".equals(ruled.name))) call = ruled;
             final Call fc = call;
             main.post(() -> run(fc, text, host));
@@ -306,13 +320,33 @@ final class Assistant {
 
     private void chat(String text, Host host) {
         String s = text.toLowerCase(Locale.ROOT);
+        // Facts about Sweety herself stay exact; everything else goes to the chat brain.
+        if (s.contains("what can you do") || s.matches("\\W*(help|help me)\\W*") || !chatBrain.downloaded()) { canned(text, host); return; }
+        chatWorker.execute(() -> {
+            String answer = chatBrain.reply(text);
+            main.post(() -> {
+                if (answer == null) { canned(text, host); return; }
+                String low = answer.toLowerCase(Locale.ROOT);
+                String emotion = low.contains("sorry") || low.contains(" sad") ? "sad"
+                    : low.contains("love") ? "love"
+                    : low.contains("haha") || low.contains("funny") ? "laugh"
+                    : answer.endsWith("?") ? "curious" : "happy";
+                String action = "love".equals(emotion) ? "jump" : "laugh".equals(emotion) ? "laugh" : answer.contains("!") ? "wave" : "nod";
+                reply(host, answer, action, emotion);
+            });
+        });
+    }
+
+    private void canned(String text, Host host) {
+        String s = text.toLowerCase(Locale.ROOT);
         if (s.matches(".*\\b(hi|hello|hey|good morning|good evening)\\b.*")) reply(host, "Hi! I'm Sweety. How can I help?", "wave", "happy");
         else if (s.contains("your name") || s.contains("who are you")) reply(host, "I'm Sweety, your little robot helper!", "wave", "love");
         else if (s.contains("how are you")) reply(host, "I'm feeling sweet as candy! How about you?", "dance", "happy");
         else if (s.contains("thank")) reply(host, "Anytime! That's what I'm here for.", "nod", "love");
         else if (s.contains("love you")) reply(host, "Aww, I love you too!", "jump", "love");
-        else if (s.contains("what can you do") || s.contains("help")) reply(host, "I can set alarms, timers and reminders, call or text people, switch the torch, control your music, tell the time, date or battery, take notes, and dance!", "wave", "happy");
-        else reply(host, "Hmm, I don't know that one yet. Try: set an alarm for 7 am, or remind me in 10 minutes to drink water.", "shrug", "curious");
+        else if (s.contains("what can you do") || s.contains("help")) reply(host, "I can set alarms, timers and reminders, call or text people, switch the torch, control your music, tell the time, date or battery, take notes, dance, and chat with you!", "wave", "happy");
+        else if (!chatBrain.downloaded()) reply(host, "I can't chat about that yet. Download my chat brain in the Sweety app and I'll get much smarter!", "shrug", "curious");
+        else reply(host, "Hmm, my thinking got tangled. Can you ask me that again?", "shrug", "curious");
     }
 
     /* ------------------------------------------------------------ helpers */

@@ -26,6 +26,8 @@ import android.widget.TextView;
 /** Small talk card over the current app, opened by long-pressing the floating Sweety. Listens straight away. */
 public class TalkActivity extends Activity implements Assistant.Host, Ears.Callback {
     private static final int REQ_MIC = 11, REQ_CONTACT = 12;
+    /** A sentence the "Hey Sweety" listener heard but needs a screen for (picking a contact). */
+    static final String EXTRA_ASK = "ask";
     private final Handler h = new Handler(Looper.getMainLooper());
     private Hearing ears;
     private TextView status, heard;
@@ -70,8 +72,17 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
         setContentView(root);
 
         ears = new Hearing(this, this);
+        String handed = getIntent().getStringExtra(EXTRA_ASK);
+        if (handed != null) { status.setText("One moment…"); ask(handed); return; }
         status.setText("Listening… try \"remind me in 10 minutes to drink water\"");
         startListening();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        String handed = intent.getStringExtra(EXTRA_ASK);
+        if (handed != null) ask(handed);
     }
 
     private int px(float v) { return Math.round(v * dp); }
