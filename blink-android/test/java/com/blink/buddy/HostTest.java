@@ -67,6 +67,11 @@ public class HostTest {
         wake("He is sweety, turn on the torch.", "turn on the torch");
         wake("O Swedy, turn on the torch.", "turn on the torch");
         wake("Okay, Swedie, tell me a joke.", "tell me a joke");
+        wake("Because Swedy tell me a joke.", "tell me a joke");
+        wake("Sweedy, do a backflip.", "do a backflip");
+        wake("A Swedie turned on the torch.", "turned on the torch");
+        wake("Pay Swedy turn on the torch.", "turn on the torch");
+        wake("The Swedes won", null);
         wake("It was weird", null);
         wake("This was weedy grass", null);
         wake("Is wet today", null);

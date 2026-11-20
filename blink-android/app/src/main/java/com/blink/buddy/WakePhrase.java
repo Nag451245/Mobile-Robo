@@ -81,7 +81,7 @@ final class WakePhrase {
     }
 
     private static boolean exact(String w) {
-        return w.matches("swee?t(y|ie|ey|i|ee|ty|tie|ies|ys|ii)|sweaty|swetty|swety|sweti|sweeti|sweetee|suit(e)?y|switty|sweety's|sweetie's");
+        return w.matches("swee?[td](y|ie|ey|i|ee|ty|tie|ies|ys|ii|dy|die)|sweaty|swetty|swety|sweti|sweeti|sweetee|suit(e)?y|switty|sweety's|sweetie's");
     }
 
     /** Sound skeleton: first letter kept, vowels and h dropped, doubles merged. "swathi" -> "swt", "sweety" -> "swt". */
