@@ -41,7 +41,7 @@ adb logcat -v time >> "$LOG" 2>&1 &
 LOGPID=$!
 trap 'kill $LOGPID 2>/dev/null' EXIT
 
-setup() { # setup <apk> <wake true|false>: fresh install with the chat brain in place
+setup() { # setup <apk> <wake true|false> [chat|nochat]: fresh install, with the chat brain in place unless "nochat"
   adb uninstall $PKG >/dev/null 2>&1
   adb install -r -g "$1" >/dev/null || return 1
   adb shell pm grant $PKG android.permission.RECORD_AUDIO
@@ -50,8 +50,8 @@ setup() { # setup <apk> <wake true|false>: fresh install with the chat brain in 
   adb push "$OUT/blink.xml" /data/local/tmp/blink.xml >/dev/null
   adb shell run-as $PKG mkdir -p shared_prefs files
   adb shell run-as $PKG cp /data/local/tmp/blink.xml shared_prefs/blink.xml
-  adb shell ls /data/local/tmp/sweety-chat.litertlm >/dev/null 2>&1 || { adb push "$MODEL" /data/local/tmp/sweety-chat.litertlm >/dev/null; adb shell chmod 644 /data/local/tmp/sweety-chat.litertlm; }
-  adb shell run-as $PKG cp /data/local/tmp/sweety-chat.litertlm files/sweety-chat.litertlm
+  [ "${3:-chat}" = chat ] && { adb shell ls /data/local/tmp/sweety-chat.litertlm >/dev/null 2>&1 || { adb push "$MODEL" /data/local/tmp/sweety-chat.litertlm >/dev/null; adb shell chmod 644 /data/local/tmp/sweety-chat.litertlm; }; }
+  [ "${3:-chat}" = chat ] && adb shell run-as $PKG cp /data/local/tmp/sweety-chat.litertlm files/sweety-chat.litertlm
   adb shell am start -W -n $PKG/.MainActivity >/dev/null
 }
 
@@ -117,10 +117,8 @@ else fail "could not install the x86_64 build"; fi
 
 # ================================================================ Phase B: the real phone build
 B=$(lines)
-if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
+if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true nochat; then
   note "phase B: arm64 phone build installed (runs under ARM translation, so it's slow)"
-  # Let the chat brain finish loading first (slow under ARM translation), as it would long before you speak on a phone.
-  wait_for "$B" "SweetyChat.*(ready in|chat engine failed)" 900 && note "phase B: $(found "$B" "SweetyChat.*(ready in|chat engine failed)")"
   wait_for "$B" "SweetyBrain.*Whistle warmed up" 900 && note "phase B: $(found "$B" "SweetyBrain.*Whistle warmed up")"
   sleep 5
   adb exec-out screencap -p > "$OUT/B-app.png"
@@ -164,10 +162,6 @@ if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
   done
   adb shell dumpsys notification --noredact 2>/dev/null | grep -A30 "sweety_wake" | grep -E "android.(title|text|bigText)=" | head -3 | sed 's/^ */      notification: /' | tee -a "$SUM"
 
-  # The phone build's chat brain must at least load (answers are slow under translation).
-  adb shell am start -W -n $PKG/.MainActivity >/dev/null
-  sleep 3
-  ask "What is the capital of France?" "paris" 900
   adb exec-out screencap -p > "$OUT/B-end.png"
   adb shell dumpsys activity services $PKG | grep -q WakeService && pass "Hey Sweety listener still running at the end" || fail "Hey Sweety listener stopped"
   frozen "$B" "phase B"

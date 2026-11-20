@@ -91,10 +91,10 @@ final class Assistant {
 
     interface TextCallback { void onText(String text); }
 
-    /** Offline speech to text with Whistle, on the brain's worker thread; the callback runs on the main thread. */
     /** Words Whistle should expect, so "Hey Sweety" isn't heard as "his weedy". */
     static final String KEYWORDS = "Sweety";
 
+    /** Offline speech to text with Whistle, on the brain's worker thread; the callback runs on the main thread. */
     void transcribe(float[] pcm, TextCallback cb) {
         worker.execute(() -> {
             needle.ensure(app);

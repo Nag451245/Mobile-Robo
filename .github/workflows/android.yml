@@ -14,8 +14,9 @@ permissions:
   contents: write
 
 concurrency:
-  group: ${{ github.ref == 'refs/heads/main' && 'android-main' || format('android-{0}', github.sha) }}
-  cancel-in-progress: false
+  group: android-${{ github.ref }}
+  # A newer push to a test branch replaces the older test run; main builds always finish.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   CACTUS: https://huggingface.co/Cactus-Compute/cactus/resolve/main/releases/4.1.4
