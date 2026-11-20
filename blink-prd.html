@@ -1,0 +1,1283 @@
+<title>Blink Desk Buddy</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one 1120px document column. Split hero (thesis left, live 3D stage tinted by the current skin), then numbered PRD sections, each pairing tight prose with one live exhibit. */
+:root{
+  --bg:#F1EEF4; --surface:#FFFFFF; --surface-2:#E9E4EF; --ink:#1D1630; --muted:#5F5873; --line:#D8D0E2; --line-strong:#A79DB8;
+  --accent:#E2468C; --accent-ink:#A11F5C; --accent-soft:#FFE0EE; --eye:#0E9FB3;
+  --stage-a:#EDE6F5; --stage-b:#D7CCE6;
+  --st-idle:#4A3F63; --st-wander:#1E9C8A; --st-antic:#D24F86; --st-perform:#E39A00; --st-hush:#4C78D6; --st-hidden:#8A8FA3; --st-sleep:#7A5FC8;
+  --l1:#8A8FA3; --l2:#4C78D6; --l3:#1E9C8A; --l4:#E39A00; --l5:#D24F86; --l6:#7A5FC8;
+  --wall-a:#5B5FC7; --wall-b:#9FD3E8; --win:#FFFFFF; --win-tb:#F1EEF5; --win-ink:#231C35; --task:#1D1630;
+  --good:#1D8A55; --warn:#B86E00; --crit:#C23B3B;
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#110E1A; --surface:#1A1626; --surface-2:#231E33; --ink:#EDE8F6; --muted:#A49CB8; --line:#322B45; --line-strong:#554C6B;
+    --accent:#FF73B4; --accent-ink:#FFA8D2; --accent-soft:#3D1430; --eye:#4FE0F2;
+    --stage-a:#251F38; --stage-b:#141020;
+    --st-idle:#C2B9D6; --st-wander:#2DBBA6; --st-antic:#F06CA2; --st-perform:#FFB42A; --st-hush:#6F98F0; --st-hidden:#7C8196; --st-sleep:#9C83E8;
+    --l1:#73788E; --l2:#5D88E4; --l3:#25AE99; --l4:#F2A51C; --l5:#E5639A; --l6:#8D72DA;
+    --wall-a:#2B2E6E; --wall-b:#2F6C86; --win:#1E1A2C; --win-tb:#2A243B; --win-ink:#E4DFF0; --task:#09070F;
+    --good:#43C285; --warn:#F0A63A; --crit:#F06A6A;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#110E1A; --surface:#1A1626; --surface-2:#231E33; --ink:#EDE8F6; --muted:#A49CB8; --line:#322B45; --line-strong:#554C6B;
+  --accent:#FF73B4; --accent-ink:#FFA8D2; --accent-soft:#3D1430; --eye:#4FE0F2;
+  --stage-a:#251F38; --stage-b:#141020;
+  --st-idle:#C2B9D6; --st-wander:#2DBBA6; --st-antic:#F06CA2; --st-perform:#FFB42A; --st-hush:#6F98F0; --st-hidden:#7C8196; --st-sleep:#9C83E8;
+  --l1:#73788E; --l2:#5D88E4; --l3:#25AE99; --l4:#F2A51C; --l5:#E5639A; --l6:#8D72DA;
+  --wall-a:#2B2E6E; --wall-b:#2F6C86; --win:#1E1A2C; --win-tb:#2A243B; --win-ink:#E4DFF0; --task:#09070F;
+  --good:#43C285; --warn:#F0A63A; --crit:#F06A6A;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:16px/1.6 var(--f-body);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--f-display);line-height:1.1;text-wrap:balance;margin:0}
+h1{font-size:clamp(2.4rem,5.4vw,4.1rem);font-weight:800;letter-spacing:-.02em}
+h2{font-size:clamp(1.55rem,2.8vw,2.1rem);font-weight:700;letter-spacing:-.01em}
+h3{font-size:1.15rem;font-weight:700}
+p{margin:0}
+.muted{color:var(--muted)}
+.mono{font-family:var(--f-mono);font-size:.86em}
+code{font-family:var(--f-mono);font-size:.84em;background:var(--surface-2);padding:.1em .35em;border-radius:4px;overflow-wrap:anywhere}
+a{color:var(--accent-ink)}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.meta{display:flex;flex-wrap:wrap;gap:8px 20px;padding-block:18px;border-bottom:1px solid var(--line);font-size:.82rem;color:var(--muted)}
+.meta b{color:var(--ink);font-weight:700}
+.meta .status{display:inline-flex;align-items:center;gap:6px}
+.meta .dot{width:8px;height:8px;border-radius:50%;background:var(--warn)}
+
+.hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:40px;padding-block:44px 28px;align-items:start}
+.eyebrow{font-family:var(--f-mono);font-size:.74rem;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:14px}
+.lede{font-size:1.14rem;margin-top:18px;max-width:34em}
+.specs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-top:26px}
+.specs div{background:var(--surface);padding:12px 14px}
+.specs dt{font-size:.74rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.specs dd{margin:2px 0 0;font-family:var(--f-display);font-size:1.35rem;font-weight:700;font-variant-numeric:tabular-nums}
+.specs dd small{font-family:var(--f-body);font-size:.8rem;font-weight:400;color:var(--muted)}
+
+.stage{--skin:#FFB3D4;position:relative;height:clamp(360px,46vw,490px);border-radius:20px;overflow:hidden;border:1px solid var(--line);touch-action:pan-y;
+  background:linear-gradient(180deg,var(--stage-a),var(--stage-b));
+  background:radial-gradient(circle,rgba(255,255,255,.28) 1.4px,transparent 2px) 0 0/24px 24px,radial-gradient(ellipse 70% 40% at 50% 94%,var(--stage-b),transparent 70%),linear-gradient(180deg,color-mix(in srgb,var(--skin) 42%,var(--stage-a)),var(--stage-b))}
+.stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:pointer}
+.stage .hint{position:absolute;left:14px;bottom:12px;font-size:.76rem;color:var(--muted);pointer-events:none}
+.stage .skinname{position:absolute;right:14px;top:12px;font-family:var(--f-mono);font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 10px;pointer-events:none}
+.bubble{position:absolute;left:0;top:0;max-width:230px;background:var(--surface);color:var(--ink);border:1px solid var(--line);padding:8px 12px;border-radius:16px;font-size:.9rem;line-height:1.35;box-shadow:0 6px 18px rgba(20,10,40,.16);pointer-events:none;opacity:0;transition:opacity .18s;white-space:normal;z-index:3}
+.bubble.on{opacity:1}
+.bubble::after{content:"";position:absolute;left:22px;bottom:-7px;width:12px;height:12px;background:var(--surface);border-right:1px solid var(--line);border-bottom:1px solid var(--line);transform:rotate(45deg)}
+.ask{display:flex;gap:8px;margin-top:14px}
+.ask input{flex:1;min-width:0;font:inherit;padding:10px 14px;border-radius:12px;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}
+.ask input::placeholder{color:var(--muted)}
+.btn{border:1px solid var(--line-strong);background:var(--surface);padding:9px 14px;border-radius:12px;cursor:pointer;font-weight:700;font-size:.9rem}
+.btn.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+.btn:hover{border-color:var(--ink)}
+.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
+.chiprow{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
+.chiprow .lab{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);width:68px;flex:none}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 11px;font-size:.84rem;cursor:pointer}
+.chip:hover{border-color:var(--accent);color:var(--accent-ink)}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
+.chip.sw i{display:inline-block;width:12px;height:12px;border-radius:50%;border:2px solid;margin-right:6px;vertical-align:-2px}
+.chip.auto{font-weight:700}
+
+.toc{display:flex;flex-wrap:wrap;gap:6px 18px;padding-block:14px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:.88rem}
+.toc a{color:var(--muted);text-decoration:none}
+.toc a:hover{color:var(--ink)}
+.toc span{font-family:var(--f-mono);font-size:.76rem;color:var(--accent-ink);margin-right:4px}
+
+section.sec{padding-block:56px 8px}
+.sec-h{display:flex;gap:14px;align-items:baseline;margin-bottom:18px}
+.sec-h .n{font-family:var(--f-mono);font-size:.85rem;color:var(--accent-ink);flex:none}
+.prose{max-width:68ch;display:grid;gap:12px}
+.cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:22px}
+.cols.two{grid-template-columns:repeat(2,minmax(0,1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;min-width:0}
+.card h3{margin-bottom:6px}
+.card p,.card li{font-size:.94rem}
+.card ul{margin:6px 0 0;padding-left:18px;display:grid;gap:4px}
+.goal-list{margin:0;padding:0;list-style:none;display:grid;gap:8px}
+.goal-list li{display:grid;grid-template-columns:auto 1fr;gap:10px;font-size:.95rem}
+.tag{display:inline-block;font-family:var(--f-mono);font-size:.72rem;font-weight:600;padding:1px 7px;border-radius:5px;background:var(--surface-2);color:var(--ink);white-space:nowrap}
+.tag.p0{background:var(--accent-soft);color:var(--accent-ink)}
+.tag.no{background:transparent;border:1px solid var(--line-strong);color:var(--muted)}
+.sub-h{margin-top:40px;margin-bottom:12px;font-size:1.35rem}
+
+.tbl{overflow-x:auto;margin-top:20px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:640px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;background:var(--surface-2)}
+tr:last-child td{border-bottom:0}
+td.id{font-family:var(--f-mono);font-size:.8rem;white-space:nowrap;color:var(--muted)}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.verdict{font-weight:700}
+.verdict.good{color:var(--good)}.verdict.warn{color:var(--warn)}.verdict.crit{color:var(--crit)}
+
+.emo-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-top:22px}
+.emo{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:10px;cursor:pointer;text-align:left;display:grid;gap:8px;align-content:start}
+.emo:hover{border-color:var(--accent)}
+.emo canvas{width:100%;aspect-ratio:2/1;border-radius:12px;display:block;background:#150828}
+.emo .row{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.emo b{font-family:var(--f-display);font-size:1rem}
+.emo small{font-size:.8rem;color:var(--muted);line-height:1.35}
+
+.anat{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin-top:22px}
+.anat dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:8px 14px;font-size:.93rem}
+.anat dt{font-weight:700}
+.anat dd{margin:0;color:var(--muted)}
+
+.gal{position:relative;height:clamp(440px,50vw,580px);border-radius:20px;border:1px solid var(--line);overflow:hidden;touch-action:pan-y;
+  background:radial-gradient(circle,rgba(255,255,255,.22) 1.4px,transparent 2px) 0 0/24px 24px,linear-gradient(180deg,var(--stage-a),var(--stage-b))}
+.gal canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.gal .labels{position:absolute;inset:0;pointer-events:none}
+.gal .hint{position:absolute;right:12px;bottom:10px;font-size:.74rem;color:var(--muted)}
+.gl{position:absolute;left:0;top:0;text-align:center;white-space:nowrap}
+.gl b{display:block;font-family:var(--f-display);font-size:.92rem}
+.gl small{font-size:.7rem;color:var(--muted)}
+.gl.on b{color:var(--accent-ink)}
+.gl.on b::after{content:" · wearing";font-family:var(--f-mono);font-size:.66rem;font-weight:600}
+
+.sim{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:16px;margin-top:22px}
+.sim-main{min-width:0}
+.sim-bar{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;align-items:center}
+.sim-bar .sep{width:1px;height:24px;background:var(--line);margin:0 4px}
+.desk{position:relative;height:clamp(340px,40vw,440px);border-radius:14px;overflow:hidden;background:radial-gradient(circle at 78% 18%,var(--wall-b),transparent 55%),linear-gradient(160deg,var(--wall-a),var(--wall-b));border:1px solid var(--line);user-select:none;touch-action:pan-y}
+.win{position:absolute;background:var(--win);color:var(--win-ink);border-radius:8px;box-shadow:0 10px 28px rgba(0,0,0,.25);overflow:hidden;font-size:.76rem}
+.win .tb{height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;background:var(--win-tb);font-weight:700;font-size:.74rem;white-space:nowrap;overflow:hidden}
+.win .tb i{width:9px;height:9px;border-radius:50%;background:var(--line-strong);flex:none}
+.win.focused .tb{box-shadow:inset 0 -2px 0 var(--accent)}
+.w-sheet{left:4%;top:7%;width:45%;height:62%}
+.w-sheet .grid{position:absolute;inset:26px 0 0 0;background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);background-size:100% 22px,64px 100%;opacity:.8}
+.w-sheet .bars{position:absolute;left:10%;right:10%;bottom:12%;height:42%;display:flex;align-items:flex-end;gap:7%}
+.w-sheet .bars span{flex:1;border-radius:3px 3px 0 0;opacity:.9}
+.w-notes{left:53%;top:16%;width:42%;height:48%}
+.w-notes pre{margin:0;padding:10px 12px;font-family:var(--f-mono);font-size:.72rem;line-height:1.55;white-space:pre-wrap;word-break:break-word}
+.w-notes .caret{display:inline-block;width:6px;height:1em;background:var(--accent);vertical-align:-2px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.w-present{inset:0;border-radius:0;z-index:6;display:grid;place-content:center;text-align:center;gap:6px;background:var(--win)}
+.w-present h4{font-family:var(--f-display);font-size:clamp(1.3rem,3vw,2rem);margin:0}
+.taskbar{position:absolute;left:0;right:0;bottom:0;height:40px;background:var(--task);display:flex;align-items:center;gap:8px;padding:0 10px;z-index:1}
+.taskbar span{width:22px;height:22px;border-radius:5px;background:rgba(255,255,255,.18)}
+.taskbar span.on{background:rgba(255,255,255,.38)}
+.taskbar .clock{margin-left:auto;font-family:var(--f-mono);font-size:.74rem;color:#E4DFF0;width:auto;height:auto;background:none}
+#deskCanvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4;transition:opacity .35s}
+.ring{position:absolute;left:0;top:0;width:140px;height:140px;margin:-70px 0 0 -70px;border:2px dashed rgba(255,255,255,.75);border-radius:50%;pointer-events:none;z-index:5;opacity:0;transition:opacity .2s}
+.ring.on{opacity:1}
+.ring em{position:absolute;left:50%;top:-20px;transform:translateX(-50%);font-style:normal;font-family:var(--f-mono);font-size:.66rem;color:#fff;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.desk .bubble{z-index:5;font-size:.8rem;max-width:200px}
+.sim-status{display:grid;gap:12px;align-content:start;min-width:0}
+.pill{display:inline-flex;align-items:center;gap:8px;font-family:var(--f-display);font-weight:700;font-size:1.3rem}
+.pill i{width:12px;height:12px;border-radius:50%;background:var(--st-idle)}
+.kv{font-size:.86rem;display:grid;gap:2px}
+.kv b{font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.log{list-style:none;margin:0;padding:0;font-family:var(--f-mono);font-size:.72rem;display:grid;gap:5px;color:var(--muted)}
+.log li{display:grid;grid-template-columns:auto 1fr;gap:8px}
+.log li b{color:var(--ink);font-weight:600}
+.note{font-size:.8rem;color:var(--muted);border-left:3px solid var(--accent);padding-left:10px}
+
+.d3{position:relative;height:clamp(380px,46vw,520px);border-radius:16px;background:linear-gradient(180deg,var(--surface),var(--surface-2));border:1px solid var(--line);overflow:hidden;cursor:grab;touch-action:pan-y}
+.d3:active{cursor:grabbing}
+.d3 canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.d3 .labels{position:absolute;inset:0;pointer-events:none}
+.d3 .hint{position:absolute;right:12px;bottom:10px;font-size:.74rem;color:var(--muted)}
+.nl{position:absolute;left:0;top:0;transform:translate(-50%,0);text-align:center;white-space:nowrap;transition:opacity .2s}
+.nl b{display:block;font-family:var(--f-display);font-size:.95rem}
+.nl small{font-size:.7rem;color:var(--muted)}
+.nl.on b{color:var(--accent-ink)}
+.lt{position:absolute;left:0;top:0;transform:translate(-50%,-50%);width:24px;height:24px;border-radius:50%;background:var(--ink);color:var(--bg);font:700 .75rem/24px var(--f-mono);text-align:center}
+.arch{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;margin-top:22px}
+.layers{list-style:none;margin:0;padding:0;display:grid;gap:8px;align-content:start}
+.layers li{display:grid;grid-template-columns:24px 1fr;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.layers li .lt{position:static;transform:none}
+.layers b{display:block;font-family:var(--f-display)}
+.layers span{font-size:.86rem;color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.8rem;color:var(--muted);margin-top:10px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+
+.tree{font-family:var(--f-mono);font-size:.82rem;line-height:1.7;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;overflow-x:auto;white-space:pre;margin:0}
+.tree .c{color:var(--muted)}
+.tree .h{color:var(--accent-ink);font-weight:600}
+
+.tl{margin-top:22px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px;overflow-x:auto}
+.tl-in{min-width:640px;display:grid;gap:10px}
+.tl-row{display:grid;grid-template-columns:190px repeat(14,1fr);align-items:center;gap:0;font-size:.86rem}
+.tl-row.head{font-family:var(--f-mono);font-size:.7rem;color:var(--muted)}
+.tl-row .nm b{display:block;font-family:var(--f-display)}
+.tl-row .nm small{color:var(--muted);font-size:.76rem}
+.bar{height:22px;border-radius:8px;background:var(--accent);opacity:.9}
+.bar.s{background:var(--l2)}.bar.t{background:var(--l3)}.bar.p{background:var(--l4)}.bar.v{background:var(--l6)}
+
+footer{padding-block:48px 64px;color:var(--muted);font-size:.84rem}
+
+@media (max-width:900px){
+  .hero{grid-template-columns:1fr;gap:26px;padding-block:30px 20px}
+  .sim{grid-template-columns:1fr}
+  .arch{grid-template-columns:1fr}
+  .emo-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .cols{grid-template-columns:1fr}
+  .anat{grid-template-columns:1fr}
+}
+@media (max-width:560px){
+  .emo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cols.two{grid-template-columns:1fr}
+  .chiprow .lab{width:100%}
+  .w-sheet{width:58%}
+  .w-notes{left:40%;width:56%;top:30%}
+  .gl b{font-size:.78rem}.gl small{font-size:.62rem}
+}
+@media (prefers-reduced-motion: reduce){ .w-notes .caret{animation:none} }
+</style>
+
+<div class="wrap">
+  <div class="meta">
+    <span><b>PRD</b> · Desktop companion</span>
+    <span>Version <b>1.1</b></span>
+    <span>Date <b>20 Nov 2026</b></span>
+    <span>Owner <b>Desktop Experience PM</b></span>
+    <span class="status"><span class="dot"></span><b>Draft for review</b></span>
+  </div>
+
+  <header class="hero">
+    <div>
+      <div class="eyebrow">Product requirements · portable desktop pet</div>
+      <h1>Blink Desk Buddy</h1>
+      <p class="lede">A tiny, round 3D buddy with big sparkly eyes that lives at the edge of your screen. It does a funny bit now and then, answers simple commands, changes outfits on its own from time to time, and goes quiet the moment you start working. It runs from a folder, with no installer and no admin rights.</p>
+      <dl class="specs">
+        <div><dt>Default size</dt><dd>96 px <small>tall, S/M/L</small></dd></div>
+        <div><dt>Admin rights</dt><dd>None <small>unzip and run</small></dd></div>
+        <div><dt>Package target</dt><dd>≤ 15 MB <small>zipped</small></dd></div>
+        <div><dt>Skins at launch</dt><dd>9 <small>robot, cat, bunny, panda…</small></dd></div>
+      </dl>
+      <p class="muted" style="margin-top:18px;font-size:.92rem">The stage on the right is a working prototype. Its eyes follow your cursor. Click it, pick an outfit, or type a command such as <code>dance</code>, <code>wear the bunny</code>, <code>change outfit</code> or <code>tell me a joke</code>. With Auto outfit on, it changes clothes by itself every 15 seconds or so.</p>
+    </div>
+    <div>
+      <div class="stage" id="stage">
+        <canvas id="heroCanvas" aria-label="Interactive 3D model of Blink"></canvas>
+        <div class="bubble" id="heroBubble" role="status" aria-live="polite"></div>
+        <div class="skinname" id="skinName">Bubblegum</div>
+        <div class="hint">Click Blink · its eyes follow your cursor</div>
+      </div>
+      <form class="ask" id="askForm" autocomplete="off">
+        <input id="askInput" placeholder="Ask Blink: dance, wear the kitty, joke…" aria-label="Command for Blink">
+        <button class="btn primary" type="submit">Ask</button>
+      </form>
+      <div class="chiprow" id="skinChips"><span class="lab">Outfits</span></div>
+      <div class="chiprow" id="actChips"><span class="lab">Actions</span>
+        <button class="chip" data-cmd="wave">Wave</button><button class="chip" data-cmd="dance">Dance</button><button class="chip" data-cmd="jump">Jump</button><button class="chip" data-cmd="spin">Spin</button><button class="chip" data-cmd="stretch">Stretch</button><button class="chip" data-cmd="joke">Joke</button><button class="chip" data-cmd="sleep">Sleep</button><button class="chip" data-cmd="hide">Hide</button>
+      </div>
+      <div class="chiprow" id="emoChips"><span class="lab">Emotions</span></div>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Sections">
+    <a href="#goals"><span>1</span>Goals</a><a href="#users"><span>2</span>Users</a><a href="#principles"><span>3</span>Principles</a><a href="#character"><span>4</span>Character and skins</a><a href="#desktop"><span>5</span>On the desktop</a><a href="#states"><span>6</span>Behaviour model</a><a href="#commands"><span>7</span>Commands</a><a href="#reqs"><span>8</span>Requirements</a><a href="#arch"><span>9</span>Architecture</a><a href="#package"><span>10</span>No-admin packaging</a><a href="#nfr"><span>11</span>Performance</a><a href="#privacy"><span>12</span>Privacy</a><a href="#metrics"><span>13</span>Metrics</a><a href="#plan"><span>14</span>Milestones</a><a href="#risks"><span>15</span>Risks</a>
+  </nav>
+
+  <section class="sec" id="goals">
+    <div class="sec-h"><span class="n">1</span><h2>Problem and goals</h2></div>
+    <div class="prose">
+      <p>People spend 8 or more hours a day in front of the same desktop. Long stretches of focused work are tiring, and most "fun" software asks for attention through notifications, sounds or pop-ups. Classic desktop pets are charming but usually need an installer, block clicks, or wander across the document you are reading.</p>
+      <p>Blink is a light, portable companion that adds small moments of delight and gentle break reminders, and is built from day one to never interrupt work. Being able to forget it is there matters as much as how cute it is.</p>
+    </div>
+    <div class="cols">
+      <div class="card"><h3>Goals</h3>
+        <ul class="goal-list">
+          <li><span class="tag p0">G1</span><span>Make users smile at least once a day with antics, emotions and outfit changes.</span></li>
+          <li><span class="tag p0">G2</span><span>Zero work disruption: no focus stealing, no blocked clicks, hidden during presentations and calls.</span></li>
+          <li><span class="tag p0">G3</span><span>Respond to simple typed commands in under 200 ms.</span></li>
+          <li><span class="tag p0">G4</span><span>Run on any Windows, macOS or Linux desktop from a single unzipped folder, without admin rights.</span></li>
+        </ul>
+      </div>
+      <div class="card"><h3>Non-goals (v1)</h3>
+        <ul class="goal-list">
+          <li><span class="tag no">N1</span><span>A productivity assistant or chatbot. Blink knows about 25 commands, not open conversation.</span></li>
+          <li><span class="tag no">N2</span><span>Reading screen content, documents or keystrokes.</span></li>
+          <li><span class="tag no">N3</span><span>Cloud accounts, sync or a paid skin store.</span></li>
+          <li><span class="tag no">N4</span><span>Mobile or tablet versions.</span></li>
+        </ul>
+      </div>
+      <div class="card"><h3>Character decision</h3>
+        <p>One round, chibi-proportioned body (big head, small body, stubby arms) with a screen face, dressed in <b>skins</b>. A screen face draws any emotion cleanly at small sizes. Skins swap colours and add accessories (cat ears, bunny ears, bows, hats, tails), so users get a robot, kitty, bunny or panda from the same rig and animations.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="users">
+    <div class="sec-h"><span class="n">2</span><h2>Who it's for</h2></div>
+    <div class="cols">
+      <div class="card"><h3>Priya, developer</h3><p>Codes 6 hours straight. Wants something cute in the corner but will uninstall anything that moves while she types or covers the terminal. Uses the hotkey palette and the Sleepy Cap skin at night.</p></div>
+      <div class="card"><h3>Marco, remote analyst</h3><p>Lives in spreadsheets and video calls. Uses a locked-down company laptop with no admin rights. Needs Blink to vanish instantly when he shares his screen. Likes stretch reminders.</p></div>
+      <div class="card"><h3>Sam, home user</h3><p>Shares a family PC. Wants Blink to be playful: jokes, dances, a new outfit every day. Turns on "Lively" mode and Surprise outfits.</p></div>
+    </div>
+  </section>
+
+  <section class="sec" id="principles">
+    <div class="sec-h"><span class="n">3</span><h2>Design principles</h2></div>
+    <div class="cols two">
+      <div class="card"><h3>Visible, never in the way</h3><p>Large enough to read its face at a glance (96 px default), small enough to cover under 0.5% of a 1080p screen. It lives on edges: the taskbar, window title bars, screen corners. Never the middle of the focused window.</p></div>
+      <div class="card"><h3>Never takes focus</h3><p>The overlay window cannot be activated. Typing always goes where it went before. Clicks pass through everywhere except Blink's own pixels.</p></div>
+      <div class="card"><h3>Antics are earned</h3><p>Default rate is one antic every 6 to 12 minutes, only while the user is idle for at least 3 seconds, never during typing, dragging, fullscreen or calls. Outfit changes follow the same rules.</p></div>
+      <div class="card"><h3>Cute, colourful and light</h3><p>Soft pastel palettes, round shapes, blush and sparkle in the eyes. Skins are tiny text files with colours and accessory names, so 9 skins add under 30 KB.</p></div>
+    </div>
+  </section>
+
+  <section class="sec" id="character">
+    <div class="sec-h"><span class="n">4</span><h2>Character, emotions and skins</h2></div>
+    <div class="prose">
+      <p>Blink's face is a curved screen drawn in real time: big eyes with two sparkle highlights, rosy cheeks and a small mouth. Emotions are shapes and motion, not texture swaps, and every skin tints the eyes and screen. Every emotion has a trigger, a duration and a way back to Content. Click any card to show it on the model at the top.</p>
+    </div>
+    <div class="emo-grid" id="emoGrid"></div>
+
+    <h3 class="sub-h">Skins and wardrobe</h3>
+    <div class="prose">
+      <p>Nine skins ship at launch. Hover a buddy to say hi, click one to dress the model at the top of the page. Two of them put themselves on automatically: Snow Buddy in the holidays and Sleepy Cap at night.</p>
+    </div>
+    <div class="gal" id="galWrap" style="margin-top:18px">
+      <canvas id="galCanvas" aria-label="3D gallery of the nine Blink skins"></canvas>
+      <div class="labels" id="galLabels"></div>
+      <div class="hint">Hover to say hi · click to wear</div>
+    </div>
+    <div class="cols">
+      <div class="card"><h3>When outfits change</h3><ul>
+        <li><b>On request:</b> <code>wear the bunny</code>, <code>change outfit</code>, or right-click › Wardrobe.</li>
+        <li><b>Daily</b> (default on): a new outfit the first time you unlock each day.</li>
+        <li><b>Surprise</b> (opt-in): an outfit change counts as an antic, at most once every 2 hours.</li>
+        <li><b>Seasonal</b> (default on): holiday skins inside date windows, local calendar only.</li>
+        <li><b>Night</b> (default on): Sleepy Cap from 9 pm to 6 am.</li>
+      </ul></div>
+      <div class="card"><h3>Outfit change animation</h3><p>Blink spins, shrinks into a puff of colour-matched confetti, swaps skin at the midpoint and pops back with a little overshoot and a happy face. It lasts 1.2 s and never happens during Hush or Hidden.</p></div>
+      <div class="card"><h3>Skin file format</h3><p><code>skins/kitty.toml</code>, about 1–2 KB: body, belly, trim, accent and eye colours, mouth style, and a list of accessories (<code>catEars</code>, <code>tail</code>). Accessories are built from simple 3D shapes in code, so no meshes ship for v1 skins. Custom <code>.glb</code> accessories are P2.</p></div>
+    </div>
+
+    <div class="anat">
+      <div class="card"><h3>Anatomy</h3>
+        <dl>
+          <dt>Face screen</dt><dd>Wide curved display, 2:1. Eyes, sparkle, brows (lid cuts), blush, mouth, tears, Z's and symbols are drawn procedurally.</dd>
+          <dt>Proportions</dt><dd>Chibi: head about 1.6× the body width, stubby arms, round boots.</dd>
+          <dt>Belly heart</dt><dd>Glowing heart on a lighter tummy patch. Beats slowly, dims in Hush mode.</dd>
+          <dt>Accessories</dt><dd>Antenna, ear discs, cat or bunny ears, bows, leaf sprout, hats, scarf and tails all come from the skin and wobble with motion.</dd>
+        </dl>
+      </div>
+      <div class="card"><h3>Animation rules</h3>
+        <dl>
+          <dt>Always on</dt><dd>Breathing bob, blinking every 2–6 s, eyes and head follow the cursor within 400 px, ears and tails sway.</dd>
+          <dt>Squash and stretch</dt><dd>On jumps and landings, volume-preserving (x/z widen as y shrinks).</dd>
+          <dt>Return to rest</dt><dd>Every action eases back to the idle pose. No snapping.</dd>
+          <dt>Reduced motion</dt><dd>If the OS asks for reduced motion, Blink only blinks and changes faces. No walking, spinning or confetti.</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="desktop">
+    <div class="sec-h"><span class="n">5</span><h2>On the desktop: live behaviour simulation</h2></div>
+    <div class="prose">
+      <p>This mock desktop runs the real behaviour rules at demo speed. Blink wanders the taskbar, perches on window title bars, peeks from the screen edge and sometimes changes outfit. Turn on <b>Typing</b>, open a <b>Fullscreen app</b>, or <b>Step away</b> to see the guards. Move your cursor close and Blink steps aside. Clicks on the windows pass straight through it.</p>
+    </div>
+    <div class="sim">
+      <div class="sim-main">
+        <div class="sim-bar">
+          <button class="btn" id="tTyping" aria-pressed="false">Typing</button>
+          <button class="btn" id="tFull" aria-pressed="false">Fullscreen app</button>
+          <button class="btn" id="tAway" aria-pressed="false">Step away</button>
+          <span class="sep" aria-hidden="true"></span>
+          <button class="chip" data-sim="wave">wave</button><button class="chip" data-sim="dance">dance</button><button class="chip" data-sim="jump">jump</button><button class="chip" data-sim="outfit">change outfit</button><button class="chip" data-sim="stretch">stretch break</button><button class="chip" data-sim="joke">joke</button>
+        </div>
+        <div class="desk" id="desk">
+          <div class="win w-sheet" id="winSheet"><div class="tb"><i></i><i></i><i></i>Q3-forecast.xlsx</div><div class="grid"></div><div class="bars"><span style="height:45%;background:var(--l2)"></span><span style="height:70%;background:var(--l5)"></span><span style="height:55%;background:var(--l3)"></span><span style="height:88%;background:var(--l4)"></span><span style="height:64%;background:var(--l6)"></span></div></div>
+          <div class="win w-notes" id="winNotes"><div class="tb"><i></i><i></i><i></i>standup-notes.txt</div><pre id="notesText"></pre></div>
+          <div class="win w-present" id="winPresent" hidden><span class="mono muted">Presenting · slide 3 of 12</span><h4>Q4 roadmap review</h4><span class="muted" style="font-size:.85rem">Blink is fully hidden while a fullscreen app or screen share is active.</span></div>
+          <canvas id="deskCanvas" aria-hidden="true"></canvas>
+          <div class="ring" id="deskRing"><em>personal space · 70 px</em></div>
+          <div class="bubble" id="deskBubble"></div>
+          <div class="taskbar"><span class="on"></span><span></span><span class="on"></span><span></span><span class="clock" id="deskClock">09:41</span></div>
+        </div>
+      </div>
+      <aside class="sim-status" aria-live="polite">
+        <div class="card" style="display:grid;gap:12px">
+          <div class="kv"><b>Current state</b><span class="pill"><i id="simDot"></i><span id="simState">Idle</span></span></div>
+          <div class="kv"><b>Why</b><span id="simWhy">Started on the taskbar</span></div>
+          <div class="kv"><b>Footprint</b><span id="simFoot">72 px tall</span></div>
+          <div class="kv"><b>Transitions</b><ul class="log" id="simLog"></ul></div>
+        </div>
+        <p class="note">Demo runs an antic every 10–16 s so you can see them. The product default is one antic every 6–12 minutes.</p>
+      </aside>
+    </div>
+  </section>
+
+  <section class="sec" id="states">
+    <div class="sec-h"><span class="n">6</span><h2>Behaviour model</h2></div>
+    <div class="prose">
+      <p>Blink's brain is a small state machine with Idle at the hub. Two guard states, <b>Hush</b> and <b>Hidden</b>, can interrupt anything and always win. This 3D diagram mirrors the simulation above in real time: the active state lights up and a pulse travels each transition. Drag to rotate.</p>
+    </div>
+    <div class="d3" id="stateWrap" style="margin-top:22px">
+      <canvas id="stateCanvas" aria-label="3D state machine diagram"></canvas>
+      <div class="labels" id="stateLabels"></div>
+      <div class="hint">Drag to rotate · dashed ring = guards can interrupt any state</div>
+    </div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Transition</th><th>Trigger</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td>Idle → Wander</td><td>Wander timer, 20–90 s</td><td>Walk along current surface at 90 px/s. Never crosses the caret line of the focused window.</td></tr>
+          <tr><td>Idle → Antic</td><td>Antic scheduler</td><td>Only if input idle ≥ 3 s and no guard active. Rate set by Calm / Normal / Lively. Outfit changes are antics.</td></tr>
+          <tr><td>Any → Perform</td><td>User command (palette, menu, click)</td><td>A user request always runs, even in Hush. Returns to the previous state after.</td></tr>
+          <tr><td>Any → Hush</td><td>Keyboard or mouse-drag input in last 3 s</td><td>Fade to 40%, shrink to 75%, park in nearest corner, 10 fps. Exits after 3 s of no input.</td></tr>
+          <tr><td>Any → Hidden</td><td>Fullscreen app, presentation mode, screen share, mic or camera in use</td><td>Hide within 250 ms. Render loop stops (0 fps).</td></tr>
+          <tr><td>Idle → Sleep</td><td>No input for 10 min</td><td>Doze with Z's. Wakes with a stretch on poke or when the user returns.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec" id="commands">
+    <div class="sec-h"><span class="n">7</span><h2>Commands</h2></div>
+    <div class="prose">
+      <p>Users talk to Blink through a small command palette (<code>Ctrl + Alt + B</code> on Windows and Linux, <code>⌘ + ⌥ + B</code> on macOS), the right-click menu on Blink, or the tray icon. Parsing is local keyword and synonym matching. No network, no language model in v1. Unknown phrases get a shrug and three suggestions.</p>
+    </div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>You type</th><th>Blink does</th><th>Face</th><th>Priority</th></tr></thead>
+        <tbody>
+          <tr><td><code>hi</code> · <code>wave</code> · <code>hello</code></td><td>Waves with its right arm</td><td>Happy</td><td><span class="tag p0">P0</span></td></tr>
+          <tr><td><code>dance</code> · <code>party</code></td><td>4-second dance, then returns to its spot</td><td>Happy</td><td><span class="tag p0">P0</span></td></tr>
+          <tr><td><code>jump</code> · <code>spin</code></td><td>Jumps with squash and stretch, or spins</td><td>Surprised / Dizzy</td><td><span class="tag p0">P0</span></td></tr>
+          <tr><td><code>wear the bunny</code> · <code>be a cat</code></td><td>Outfit change into the named skin</td><td>Happy</td><td><span class="tag p0">P0</span></td></tr>
+          <tr><td><code>change outfit</code> · <code>new clothes</code></td><td>Outfit change into a random different skin</td><td>Happy</td><td><span class="tag p0">P0</span></td></tr>
+          <tr><td><code>stretch</code> · <code>break</code></td><td>Stretches and shows a 20-second stretch tip</td><td>Happy</td><td><span class="tag p0">P0</span></td></tr>
+          <tr><td><code>tell me a joke</code></td><td>Laughs and shows a short, work-safe joke</td><td>Happy</td><td><span class="tag p0">P0</span></td></tr>
+          <tr><td><code>what time is it</code></td><td>Shows the local time in a speech bubble</td><td>Content</td><td><span class="tag p0">P0</span></td></tr>
+          <tr><td><code>sleep</code> · <code>nap</code></td><td>Sleeps until poked or called</td><td>Asleep</td><td><span class="tag p0">P0</span></td></tr>
+          <tr><td><code>go away</code> · <code>hide</code></td><td>Sad for 2 s, then hides for 1 hour or until the hotkey</td><td>Sad</td><td><span class="tag p0">P0</span></td></tr>
+          <tr><td><code>come back</code> · <code>wake up</code></td><td>Returns from Hide or Sleep</td><td>Happy</td><td><span class="tag p0">P0</span></td></tr>
+          <tr><td><code>remind me in 10 min to drink water</code></td><td>Local timer, antenna pulses and Blink waves when due</td><td>Curious → Happy</td><td><span class="tag">P1</span></td></tr>
+          <tr><td><code>20-20-20</code></td><td>Eye-break reminder every 20 min: look 20 ft away for 20 s</td><td>Content</td><td><span class="tag">P1</span></td></tr>
+          <tr><td>"Hey Blink" (voice)</td><td>Optional offline wake word, off by default</td><td>Curious</td><td><span class="tag">P2</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec" id="reqs">
+    <div class="sec-h"><span class="n">8</span><h2>Functional requirements</h2></div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>ID</th><th>Requirement</th><th>Pri</th><th>Acceptance check</th></tr></thead>
+        <tbody>
+          <tr><td class="id">FR-01</td><td>Render Blink in a transparent, always-on-top overlay. Only Blink's own pixels receive mouse input.</td><td><span class="tag p0">P0</span></td><td>Click 2 px outside Blink's silhouette lands in the window below, on all 3 OSes.</td></tr>
+          <tr><td class="id">FR-02</td><td>The overlay never takes keyboard focus or shows in the taskbar or Alt+Tab.</td><td><span class="tag p0">P0</span></td><td>Type continuously for 30 min with Blink active: zero lost keystrokes.</td></tr>
+          <tr><td class="id">FR-03</td><td>Size presets S 64 / M 96 / L 128 px, DPI-aware per monitor.</td><td><span class="tag p0">P0</span></td><td>Same physical size at 100%, 150% and 200% scaling.</td></tr>
+          <tr><td class="id">FR-04</td><td>Idle life: breathing, blinking, eyes and head follow the cursor, accessories sway.</td><td><span class="tag p0">P0</span></td><td>Blink interval random 2–6 s; tracking within 400 px.</td></tr>
+          <tr><td class="id">FR-05</td><td>Wander along taskbar or dock and the top edges of visible windows. Avoid the focused window's centre and the cursor (70 px personal space).</td><td><span class="tag p0">P0</span></td><td>Never overlaps the text caret position in a 1-hour soak test.</td></tr>
+          <tr><td class="id">FR-06</td><td>Antic scheduler with at least 12 antics at launch, rate limited by mode.</td><td><span class="tag p0">P0</span></td><td>Normal mode: 5–10 antics per hour of idle time; none during input.</td></tr>
+          <tr><td class="id">FR-07</td><td>Hush guard on recent keyboard or drag input.</td><td><span class="tag p0">P0</span></td><td>Enters Hush within 100 ms of a key press.</td></tr>
+          <tr><td class="id">FR-08</td><td>Hidden guard for fullscreen, presentation mode and screen sharing.</td><td><span class="tag p0">P0</span></td><td>Invisible in a Teams, Zoom or Meet share within 250 ms.</td></tr>
+          <tr><td class="id">FR-09</td><td>Command palette, right-click menu and tray menu covering all P0 commands.</td><td><span class="tag p0">P0</span></td><td>Response starts in under 200 ms.</td></tr>
+          <tr><td class="id">FR-10</td><td>10 emotions (8 P0, Love and Grumpy P1) with mouths, blush and sparkle.</td><td><span class="tag p0">P0</span></td><td>Each is recognisable by 4 of 5 testers at 64 px.</td></tr>
+          <tr><td class="id">FR-11</td><td>9 skins at launch, loaded from small skin files; switchable at any time with the outfit-change animation.</td><td><span class="tag p0">P0</span></td><td>Every skin plays every P0 animation; switch completes in 1.2 s.</td></tr>
+          <tr><td class="id">FR-12</td><td>Auto wardrobe: Daily, Surprise, Seasonal and Night rules, each toggleable.</td><td><span class="tag p0">P0</span></td><td>Sleepy Cap appears at 21:00 local time; no change during Hush or Hidden.</td></tr>
+          <tr><td class="id">FR-13</td><td>Accessories add at most 25% to Blink's height and are included in hit testing.</td><td><span class="tag p0">P0</span></td><td>Clicking a bunny ear counts as a poke; clicks beside it pass through.</td></tr>
+          <tr><td class="id">FR-14</td><td>Snooze and quit: <code>Ctrl+Alt+Shift+B</code> snoozes 1 h; tray has Quit.</td><td><span class="tag p0">P0</span></td><td>Reachable by keyboard only.</td></tr>
+          <tr><td class="id">FR-15</td><td>Poke reactions: click giggles, double-click jumps, drag carries, throw with simple physics.</td><td><span class="tag">P1</span></td><td>Thrown Blink lands on a valid surface, never off-screen.</td></tr>
+          <tr><td class="id">FR-16</td><td>Meeting guard: hide while microphone or camera is in use.</td><td><span class="tag">P1</span></td><td>Hidden for the full length of a test call.</td></tr>
+          <tr><td class="id">FR-17</td><td>Multi-monitor: stays on its chosen monitor and recovers when a monitor is unplugged.</td><td><span class="tag">P1</span></td><td>No off-screen Blink after dock or undock.</td></tr>
+          <tr><td class="id">FR-18</td><td>User-made skins with custom <code>.glb</code> accessories.</td><td><span class="tag">P2</span></td><td>A community skin loads without code changes.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec" id="arch">
+    <div class="sec-h"><span class="n">9</span><h2>Architecture</h2></div>
+    <div class="prose">
+      <p>Six thin layers in one process. Sensors only read coarse signals (time since last input, whether the foreground app is fullscreen). The brain decides, the character engine animates and dresses Blink, and the overlay shell hands frames to the OS compositor. Drag the stack to look around it.</p>
+    </div>
+    <div class="arch">
+      <div>
+        <div class="d3" id="archWrap">
+          <canvas id="archCanvas" aria-label="3D layered architecture diagram"></canvas>
+          <div class="labels" id="archLabels"></div>
+          <div class="hint">Drag to rotate</div>
+        </div>
+        <div class="legend"><span><i style="background:var(--l4)"></i>Input signals going up</span><span><i style="background:var(--eye)"></i>Rendered frames going down</span><span><i style="background:var(--l5)"></i>User commands</span></div>
+      </div>
+      <ol class="layers" id="layerList">
+        <li><span class="lt">6</span><div><b>Command layer</b><span>Hotkey palette, right-click and tray menus, keyword parser. Optional offline voice (P2).</span></div></li>
+        <li><span class="lt">5</span><div><b>Character engine</b><span>Rig, procedural animation, face renderer, skin loader. GPU via wgpu, 30 fps cap, 2D sprite fallback for VDI.</span></div></li>
+        <li><span class="lt">4</span><div><b>Behaviour brain</b><span>State machine, antic scheduler, wardrobe rules, rate limiter, surface finder.</span></div></li>
+        <li><span class="lt">3</span><div><b>Sensors</b><span>Idle time, foreground window bounds, fullscreen and share flags, mic or camera in use, local clock. Never keystroke content.</span></div></li>
+        <li><span class="lt">2</span><div><b>Overlay shell</b><span>Transparent, topmost, non-activating window with per-pixel hit testing.</span></div></li>
+        <li><span class="lt">1</span><div><b>Host OS, user space</b><span>Win32, Cocoa, X11 or Wayland. No services, drivers, hooks or elevated rights.</span></div></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="sec" id="package">
+    <div class="sec-h"><span class="n">10</span><h2>Packaging without admin rights</h2></div>
+    <div class="prose">
+      <p>Blink ships as a zip (Windows), a signed <code>.app</code> in a zip (macOS) and an AppImage (Linux). Nothing is written outside the folder and the user profile. Users can run it from Downloads, the Desktop or a USB stick.</p>
+    </div>
+    <div class="cols" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+<pre class="tree"><span class="h">Blink/</span>                  <span class="c">unzip anywhere the user can write</span>
+├─ blink.exe            <span class="c">~8 MB target, single static binary</span>
+├─ skins/
+│  ├─ bubblegum.toml    <span class="c">~1.5 KB each</span>
+│  ├─ kitty.toml
+│  ├─ bunny.toml
+│  └─ …                 <span class="c">9 skins, under 30 KB total</span>
+├─ sounds/              <span class="c">optional, muted by default</span>
+├─ blink.toml           <span class="c">portable mode if present</span>
+└─ README.txt
+
+<span class="h">%APPDATA%\Blink\</span>        <span class="c">settings when not portable</span>
+└─ settings.toml         <span class="c">size, mode, wardrobe, hotkeys</span></pre>
+      <div class="card"><h3>What we never do</h3>
+        <ul>
+          <li>No installer, MSI, UAC prompt or service.</li>
+          <li>No global keyboard hooks. Busy detection uses idle time only, which also avoids antivirus false positives.</li>
+          <li>No writes to <code>Program Files</code>, <code>HKLM</code> or system folders.</li>
+          <li>Autostart is opt-in, using the per-user Run key (<code>HKCU\…\Run</code>), a user LaunchAgent, or <code>~/.config/autostart</code>.</li>
+          <li>Uninstall is deleting the folder, plus the settings folder if wanted.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="cols">
+      <div class="card"><h3>Windows 10 / 11</h3><ul>
+        <li>Window styles <code>WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_TOPMOST</code>.</li>
+        <li>Busy: <code>GetLastInputInfo</code>. Fullscreen or presenting: <code>SHQueryUserNotificationState</code>.</li>
+        <li>Code-signed to avoid SmartScreen blocks.</li></ul></div>
+      <div class="card"><h3>macOS 12+</h3><ul>
+        <li>Borderless <code>NSPanel</code> at floating level, <code>ignoresMouseEvents</code> toggled by hit test.</li>
+        <li>Signed and notarized so Gatekeeper opens it without admin.</li>
+        <li>No Accessibility or Screen Recording permission needed for P0.</li></ul></div>
+      <div class="card"><h3>Linux</h3><ul>
+        <li>Single AppImage, <code>chmod +x</code> and run.</li>
+        <li>X11: input shape region for click-through.</li>
+        <li>Wayland: layer-shell on KDE and wlroots. GNOME falls back to a small always-on-top window.</li></ul></div>
+    </div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Tech option</th><th>Package size (approx.)</th><th>Runs without admin</th><th>Transparent click-through</th><th>Verdict</th></tr></thead>
+        <tbody>
+          <tr><td><b>Rust + winit + wgpu</b> (native)</td><td class="num">6–10 MB</td><td>Yes, one binary per OS</td><td>Yes on Windows, macOS, X11. Partial on Wayland.</td><td class="verdict good">Recommended</td></tr>
+          <tr><td>Tauri 2 (system webview)</td><td class="num">4–8 MB</td><td>Yes, but needs WebView2, missing on some Windows Server and LTSC builds</td><td>Yes, with per-OS code</td><td class="verdict good">Strong alternative</td></tr>
+          <tr><td>Godot 4 export</td><td class="num">35–70 MB</td><td>Yes</td><td>Yes (per-pixel transparency)</td><td class="verdict warn">Fallback for art-heavy skins</td></tr>
+          <tr><td>Electron</td><td class="num">90–150 MB</td><td>Yes</td><td>Yes</td><td class="verdict crit">Too heavy (150 MB+ RAM)</td></tr>
+          <tr><td>Python + PyInstaller</td><td class="num">25–40 MB</td><td>Yes</td><td>Partial</td><td class="verdict crit">Frequent antivirus false positives</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec" id="nfr">
+    <div class="sec-h"><span class="n">11</span><h2>Performance and quality targets</h2></div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Metric</th><th>Target</th><th>How we measure</th></tr></thead>
+        <tbody>
+          <tr><td>Download size</td><td class="num">≤ 15 MB zipped</td><td>CI artifact size check, fails build above limit</td></tr>
+          <tr><td>Memory</td><td class="num">≤ 80 MB working set</td><td>1-hour soak on a 4-core, 8 GB laptop</td></tr>
+          <tr><td>CPU, idle</td><td class="num">≤ 1% average</td><td>Same soak, Task Manager and <code>top</code> sampling</td></tr>
+          <tr><td>CPU, during antic or outfit change</td><td class="num">≤ 5% peak</td><td>Scripted antic loop</td></tr>
+          <tr><td>Skin switch</td><td class="num">≤ 50 ms to rebuild accessories</td><td>Internal timer, all 9 skins</td></tr>
+          <tr><td>Frame rate</td><td class="num">30 fps active · 10 fps Hush · 0 fps Hidden</td><td>Internal frame counter</td></tr>
+          <tr><td>Cold start</td><td class="num">≤ 1.5 s to first frame</td><td>Launch timer on a spinning-disk test machine</td></tr>
+          <tr><td>Accessibility</td><td>Reduced motion honoured; all actions keyboard-reachable; every skin passes eye-contrast check</td><td>Manual audit per release</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec" id="privacy">
+    <div class="sec-h"><span class="n">12</span><h2>Privacy and trust</h2></div>
+    <div class="cols">
+      <div class="card"><h3>Offline by default</h3><p>No network calls in v1. No accounts. Seasonal and Night skins use the local clock only. Opt-in crash reports, with the payload shown before sending.</p></div>
+      <div class="card"><h3>Coarse signals only</h3><p>Blink knows <i>that</i> you typed recently, never <i>what</i>. It reads window bounds, not window contents. It never captures the screen.</p></div>
+      <div class="card"><h3>IT friendly</h3><p>A <code>blink.toml</code> next to the exe can lock settings (e.g. force Calm, allow only certain skins, disable sounds). Published SHA-256 hashes and a signed binary make allow-listing simple.</p></div>
+    </div>
+  </section>
+
+  <section class="sec" id="metrics">
+    <div class="sec-h"><span class="n">13</span><h2>Success metrics (opt-in beta telemetry)</h2></div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Metric</th><th>Beta target</th><th>Why it matters</th></tr></thead>
+        <tbody>
+          <tr><td>Day-7 retention (still running)</td><td class="num">≥ 40%</td><td>People keep it because it's pleasant, not because they forgot it</td></tr>
+          <tr><td>Manual snoozes per active hour</td><td class="num">&lt; 0.3</td><td>Direct proxy for "it got in my way"</td></tr>
+          <tr><td>Sessions with at least one command</td><td class="num">≥ 30%</td><td>Users discover and enjoy interaction</td></tr>
+          <tr><td>Users who try 3+ skins in week 1</td><td class="num">≥ 50%</td><td>Wardrobe is a reason to come back</td></tr>
+          <tr><td>Focus-steal or lost-keystroke reports</td><td class="num">0</td><td>Any report is a P0 bug</td></tr>
+          <tr><td>"Made me smile" survey, 5-point</td><td class="num">≥ 4.2</td><td>The core purpose</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="sec" id="plan">
+    <div class="sec-h"><span class="n">14</span><h2>Milestones</h2></div>
+    <div class="tl"><div class="tl-in">
+      <div class="tl-row head"><span></span><span>W1</span><span>W2</span><span>W3</span><span>W4</span><span>W5</span><span>W6</span><span>W7</span><span>W8</span><span>W9</span><span>W10</span><span>W11</span><span>W12</span><span>W13</span><span>W14</span></div>
+      <div class="tl-row"><span class="nm"><b>M0 Overlay spike</b><small>click-through on 3 OSes</small></span><span class="bar s" style="grid-column:2 / span 2"></span></div>
+      <div class="tl-row"><span class="nm"><b>M1 Character</b><small>rig, face, 10 emotions, 9 skins</small></span><span class="bar" style="grid-column:4 / span 3"></span></div>
+      <div class="tl-row"><span class="nm"><b>M2 Behaviour</b><small>states, guards, antics, wardrobe</small></span><span class="bar t" style="grid-column:6 / span 4"></span></div>
+      <div class="tl-row"><span class="nm"><b>M3 Commands</b><small>palette, menus, parser</small></span><span class="bar p" style="grid-column:9 / span 2"></span></div>
+      <div class="tl-row"><span class="nm"><b>M4 Portable beta</b><small>signing, notarizing, AppImage</small></span><span class="bar v" style="grid-column:11 / span 3"></span></div>
+      <div class="tl-row"><span class="nm"><b>GA v1.0</b><small>P0 complete, metrics met</small></span><span class="bar" style="grid-column:14 / span 2;opacity:.5"></span></div>
+    </div></div>
+  </section>
+
+  <section class="sec" id="risks">
+    <div class="sec-h"><span class="n">15</span><h2>Risks and open questions</h2></div>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Risk</th><th>Likelihood</th><th>Mitigation</th></tr></thead>
+        <tbody>
+          <tr><td>AppLocker or WDAC policies block exes in user folders</td><td><span class="verdict warn">Medium</span></td><td>Signed binary with published hash; IT allow-list guide.</td></tr>
+          <tr><td>Antivirus flags an overlay that watches input timing</td><td><span class="verdict warn">Medium</span></td><td>No hooks, no injection, idle-time API only; submit to major vendors before beta.</td></tr>
+          <tr><td>Wayland limits topmost and click-through</td><td><span class="verdict crit">High</span></td><td>Layer-shell where available, windowed fallback, documented.</td></tr>
+          <tr><td>No GPU in VDI or RDP sessions</td><td><span class="verdict warn">Medium</span></td><td>Pre-rendered 2D sprite mode at 15 fps, one sprite sheet per skin.</td></tr>
+          <tr><td>Bright skins feel loud in serious workplaces</td><td><span class="verdict warn">Medium</span></td><td>Classic skin as an option, IT can limit skins, Hush still fades to 40%.</td></tr>
+          <tr><td>Antics become annoying over weeks</td><td><span class="verdict warn">Medium</span></td><td>Conservative default rate, antic and outfit variety, snooze metric watched weekly.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="cols two">
+      <div class="card"><h3>Open questions</h3><ul>
+        <li>Final name: "Blink" vs alternatives; trademark check needed.</li>
+        <li>Allow user-made skins in v1, or bundled ones only?</li>
+        <li>Which seasonal skins beyond winter (spring blossom, autumn pumpkin)?</li>
+        <li>Corporate distribution: zip on an intranet page, or software centres as a per-user app?</li>
+      </ul></div>
+      <div class="card"><h3>Decisions needed from review</h3><ul>
+        <li>Approve the chibi body with skins and the Rust + wgpu stack.</li>
+        <li>Approve offline-only v1 (no LLM chat).</li>
+        <li>Approve wardrobe defaults: Daily, Seasonal and Night on; Surprise off.</li>
+      </ul></div>
+    </div>
+  </section>
+
+  <footer>Blink Desk Buddy · PRD v1.1 · All 3D models on this page are live prototypes rendered in your browser with three.js.</footer>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+"use strict";
+const $=(s,el=document)=>el.querySelector(s);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smooth=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
+const easeInOut=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+const backOut=x=>{const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2);};
+const REDUCE=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const tok=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim()||'#888888';
+const rand=(a,b)=>a+Math.random()*(b-a);
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+
+/* ---------------- Skins ---------------- */
+const SKINS=[
+  {id:'bubblegum',name:'Bubblegum',kind:'Robot',when:'Launch',shell:'#FFB3D4',belly:'#FFF0F7',trim:'#56C9BA',accent:'#FFD447',inner:'#FF86B8',bow:'#FF5FA2',eye:'#7DF9FF',bg:['#3A1652','#170829'],blush:'#FF7AB6',mouth:'smile',acc:['antenna','discs','bow'],kw:['pink','bubblegum','bubble','robot']},
+  {id:'sunny',name:'Sunny',kind:'Robot',when:'Launch',shell:'#FFD84A',belly:'#FFF6CF',trim:'#3FA2F7',accent:'#FF6F59',inner:'#FF9F80',eye:'#9BFFF0',bg:['#0E2B4D','#061629'],blush:'#FF8A65',mouth:'smile',acc:['antenna','discs'],kw:['sunny','yellow','sun']},
+  {id:'kitty',name:'Mint Kitty',kind:'Cat',when:'Launch',shell:'#8FE3C8',belly:'#F0FFF8',trim:'#2E8C7C',accent:'#FF9EC7',inner:'#FFB0D0',eye:'#FFF38A',bg:['#0F3838','#051E1E'],blush:'#FF8FC0',mouth:'cat',acc:['catEars','tail'],kw:['cat','kitty','kitten','mint']},
+  {id:'bunny',name:'Lavender Bunny',kind:'Bunny',when:'Launch',shell:'#C9B5FF',belly:'#FFFFFF',trim:'#7B5CE0',accent:'#FFB3D9',inner:'#FFC2E0',eye:'#FFD6F5',bg:['#24154A','#0E0826'],blush:'#FF9ACB',mouth:'cat',acc:['bunnyEars'],kw:['bunny','rabbit','lavender','purple']},
+  {id:'panda',name:'Panda',kind:'Bear',when:'Launch',shell:'#FAFAFA',belly:'#FFFFFF',trim:'#2A2A33',limb:'#2A2A33',accent:'#7ED957',inner:'#4A4A55',leaf:'#7ED957',eye:'#B8F3FF',bg:['#1A1D24','#0A0B0F'],blush:'#FF9EB5',mouth:'smile',acc:['bearEars','leaf'],kw:['panda','bear']},
+  {id:'sprout',name:'Sprout',kind:'Robot',when:'Launch',shell:'#FFEFD0',belly:'#FFFFFF',trim:'#3E9B6B',accent:'#7BD88F',inner:'#FFB38A',leaf:'#6CD47E',eye:'#B9FF9C',bg:['#123222','#06180F'],blush:'#FF9F8A',mouth:'smile',acc:['leaf','discs'],kw:['sprout','plant','leaf','green']},
+  {id:'classic',name:'Classic',kind:'Robot',when:'Launch',shell:'#F2F4F7',belly:'#FFFFFF',trim:'#2A3544',accent:'#FFB020',inner:'#FFB020',eye:'#6FF3FF',bg:['#0F1D2F','#050B14'],blush:'#FF7AB0',mouth:'smile',acc:['antenna','discs'],kw:['classic','white','original']},
+  {id:'snow',name:'Snow Buddy',kind:'Seasonal',when:'Auto 1 Dec – 6 Jan',shell:'#DDF1FF',belly:'#FFFFFF',trim:'#5C8FD6',accent:'#FF5A6E',inner:'#FF5A6E',hat:'#FF4D64',eye:'#A8F0FF',bg:['#102A4A','#061328'],blush:'#FF8FA8',mouth:'smile',acc:['beanie'],kw:['snow','winter','christmas','holiday','beanie','scarf']},
+  {id:'nightcap',name:'Sleepy Cap',kind:'Night',when:'Auto 9 pm – 6 am',shell:'#A9B8FF',belly:'#E8ECFF',trim:'#3D4B9E',accent:'#FFE27A',inner:'#FFE27A',hat:'#4B5BD6',eye:'#FFE9A8',bg:['#121640','#070820'],blush:'#FF9AC2',mouth:'cat',acc:['nightcap'],kw:['night','nightcap','pajama','pyjama','cap']}
+];
+const SKIN_BY={};SKINS.forEach(s=>SKIN_BY[s.id]=s);
+
+/* ---------------- Face drawing ---------------- */
+function rrect(ctx,x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function lidClip(ctx,cx,cy,r,side,yi,yo){const xi=cx-side*r,xo=cx+side*r,s=(yo-yi)/(xo-xi),xl=cx-2.2*r,xr=cx+2.2*r;ctx.beginPath();ctx.moveTo(xl,yi+s*(xl-xi));ctx.lineTo(xr,yi+s*(xr-xi));ctx.lineTo(xr,cy+3*r);ctx.lineTo(xl,cy+3*r);ctx.closePath();ctx.clip();}
+function heart(ctx,cx,cy,s){ctx.beginPath();ctx.moveTo(cx,cy+.7*s);ctx.bezierCurveTo(cx-1.15*s,cy,cx-.6*s,cy-.95*s,cx,cy-.35*s);ctx.bezierCurveTo(cx+.6*s,cy-.95*s,cx+1.15*s,cy,cx,cy+.7*s);ctx.fill();}
+function drawFace(ctx,W,H,emo,open,lx,ly,t,sk){
+  sk=sk||SKINS[0];
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,sk.bg[0]);g.addColorStop(1,sk.bg[1]);ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(255,255,255,0.035)';for(let y=0;y<H;y+=Math.max(3,H/42))ctx.fillRect(0,y,W,Math.max(1,H/128));
+  const col=emo==='angry'?'#FF7A5C':emo==='love'?'#FF6FAE':sk.eye;
+  const r=H*.25,ox=lx*r*.45,oy=ly*r*.32,ey=H*.43;
+  // blush (always a little, stronger when happy)
+  const strong=['happy','love','wink','laugh'].includes(emo);
+  ctx.save();ctx.globalAlpha=strong?.85:.45;ctx.fillStyle=sk.blush;ctx.shadowColor=sk.blush;ctx.shadowBlur=H*.06;
+  for(const s of [-1,1]){ctx.beginPath();ctx.ellipse(W*.5+s*W*.31+ox*.5,H*.7+oy*.4,W*.06,H*.055,0,0,7);ctx.fill();}ctx.restore();
+  ctx.save();ctx.shadowColor=col;ctx.shadowBlur=H*.1;ctx.fillStyle=col;ctx.strokeStyle=col;ctx.lineCap='round';ctx.lineJoin='round';
+  for(const side of [-1,1]){
+    const cx=W*.5+side*W*.165+ox,cy=ey+oy;
+    ctx.save();
+    let e=emo;if(e==='wink')e=side<0?'happy':'neutral';
+    const blob=(w,h)=>{h=Math.max(h,r*.12);rrect(ctx,cx-w/2,cy-h/2,w,h,Math.min(w,h)/2);ctx.fill();};
+    const shine=(w,h)=>{if(h<r*.9)return;ctx.save();ctx.shadowBlur=0;ctx.fillStyle='rgba(255,255,255,.95)';ctx.beginPath();ctx.arc(cx-w*.2,cy-h*.22,r*.2,0,7);ctx.fill();ctx.beginPath();ctx.arc(cx+w*.17,cy+h*.2,r*.09,0,7);ctx.fill();ctx.restore();};
+    switch(e){
+      case 'happy':case 'laugh':ctx.lineWidth=r*.34;ctx.beginPath();ctx.arc(cx,cy+r*.35,r*.6,Math.PI*1.12,Math.PI*1.88);ctx.stroke();break;
+      case 'sleep':ctx.lineWidth=r*.24;ctx.beginPath();ctx.arc(cx,cy-r*.3,r*.58,Math.PI*.18,Math.PI*.82);ctx.stroke();break;
+      case 'sleepy':blob(r*1.5,r*2*open*.3);break;
+      case 'sad':{lidClip(ctx,cx,cy,r,side,cy-r*.95,cy-r*.15);const w=r*1.5,h=r*1.9*open;blob(w,h);shine(w,h*1.3);break;}
+      case 'angry':{lidClip(ctx,cx,cy,r,side,cy-r*.05,cy-r*.9);blob(r*1.55,r*1.8*open);break;}
+      case 'surprised':{const k=1.1+Math.sin(t*9)*.04;ctx.lineWidth=r*.26;ctx.beginPath();ctx.arc(cx,cy,r*k*open+.01,0,7);ctx.stroke();ctx.beginPath();ctx.arc(cx,cy,r*.34,0,7);ctx.fill();break;}
+      case 'love':heart(ctx,cx,cy,r*1.15*(1+.08*Math.sin(t*8)));break;
+      case 'dizzy':{ctx.lineWidth=r*.16;ctx.beginPath();const rot=t*6*side;for(let i=0;i<=64;i++){const a=i/64*2.6*Math.PI*2,rr=i/64*r*.95,x=cx+Math.cos(a+rot)*rr,y=cy+Math.sin(a+rot)*rr;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.stroke();break;}
+      case 'curious':{const s=side>0?1.2:.86,w=r*1.5*s,h=r*2*open*s;blob(w,h);shine(w,h);break;}
+      default:{const w=r*1.5,h=r*2*open;blob(w,h);shine(w,h);}
+    }
+    ctx.restore();
+  }
+  // mouth
+  const mx=W*.5+ox*.6,my=H*.76+oy*.4,m=H*.055;
+  ctx.lineWidth=H*.028;ctx.shadowBlur=H*.04;ctx.beginPath();
+  const catW=()=>{ctx.beginPath();ctx.arc(mx-m*.48,my-m*.25,m*.48,0,Math.PI);ctx.arc(mx+m*.48,my-m*.25,m*.48,0,Math.PI);ctx.stroke();};
+  switch(emo){
+    case 'happy':case 'laugh':case 'wink':{const k=emo==='laugh'?1.25+Math.abs(Math.sin(t*14))*.25:1.05;ctx.beginPath();ctx.moveTo(mx-m*k,my-m*.4);ctx.arc(mx,my-m*.4,m*k,0,Math.PI);ctx.closePath();ctx.fill();ctx.shadowBlur=0;ctx.fillStyle='#FF8FB1';ctx.beginPath();ctx.ellipse(mx,my+m*.32*k,m*.5*k,m*.24*k,0,0,7);ctx.fill();break;}
+    case 'sad':ctx.arc(mx,my+m*.85,m*.85,Math.PI*1.2,Math.PI*1.8);ctx.stroke();break;
+    case 'surprised':ctx.ellipse(mx,my,m*.5,m*.65,0,0,7);ctx.stroke();break;
+    case 'angry':ctx.moveTo(mx-m,my);ctx.lineTo(mx-m*.5,my-m*.35);ctx.lineTo(mx,my);ctx.lineTo(mx+m*.5,my-m*.35);ctx.lineTo(mx+m,my);ctx.stroke();break;
+    case 'dizzy':for(let i=0;i<=20;i++){const x=mx-m*1.2+i/20*m*2.4,y=my+Math.sin(i/20*Math.PI*4+t*6)*m*.25;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.stroke();break;
+    case 'sleep':ctx.arc(mx,my,m*.28*(1+.2*Math.sin(t*1.5)),0,7);ctx.fill();break;
+    case 'sleepy':ctx.moveTo(mx-m*.4,my);ctx.lineTo(mx+m*.4,my);ctx.stroke();break;
+    case 'love':catW();break;
+    default:if(sk.mouth==='cat')catW();else{ctx.arc(mx,my-m*.65,m*.85,Math.PI*.2,Math.PI*.8);ctx.stroke();}
+  }
+  ctx.restore();
+  ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='middle';
+  if(emo==='sad'){const p=(t*.7)%1;ctx.globalAlpha=1-p;ctx.fillStyle='#8FDCFF';ctx.beginPath();ctx.arc(W*.335+ox+W*.04,H*.62+p*H*.3,H*.035,0,7);ctx.fill();ctx.globalAlpha=1;}
+  if(emo==='sleep'){ctx.font=`700 ${H*.15}px "JetBrains Mono",monospace`;for(let i=0;i<3;i++){const p=(t*.35+i/3)%1;ctx.globalAlpha=Math.sin(p*Math.PI);ctx.fillText('z',W*.82+p*W*.08,H*.55-p*H*.42);}ctx.globalAlpha=1;}
+  if(emo==='curious'){ctx.font=`700 ${H*.22}px "Bricolage Grotesque",sans-serif`;ctx.fillText('?',W*.9,H*.28+Math.sin(t*3)*H*.03);}
+  if(emo==='surprised'){ctx.font=`800 ${H*.22}px "Bricolage Grotesque",sans-serif`;ctx.fillText('!',W*.9,H*.26);}
+  if(emo==='love'){ctx.fillStyle='#FF8FC0';for(let i=0;i<2;i++){const p=(t*.4+i/2)%1;ctx.globalAlpha=Math.sin(p*Math.PI);heart(ctx,W*(.12+i*.76),H*.5-p*H*.35,H*.05);}ctx.globalAlpha=1;}
+  if(emo==='angry'){ctx.save();ctx.strokeStyle=col;ctx.lineWidth=H*.025;ctx.translate(W*.88,H*.2);for(let i=0;i<4;i++){ctx.rotate(Math.PI/2);ctx.beginPath();ctx.moveTo(H*.02,H*.02);ctx.quadraticCurveTo(H*.07,H*.02,H*.07,H*.07);ctx.stroke();}ctx.restore();}
+}
+
+/* ---------------- Robot ---------------- */
+let PG=null;
+class Bot{
+  constructor(opts={}){
+    if(!PG)PG=[new THREE.BoxGeometry(.1,.1,.1),new THREE.OctahedronGeometry(.08),new THREE.SphereGeometry(.06,8,6)];
+    const g=new THREE.Group(),root=new THREE.Group();g.add(root);
+    const std=(r=.42)=>{const m=new THREE.MeshStandardMaterial({color:'#ffffff',roughness:r,metalness:.03});m.userData.shared=true;return m;};
+    const M=this.M={shell:std(.38),belly:std(.5),trim:std(.45),limb:std(.38),inner:std(.5),glow:std(.3),heart:new THREE.MeshBasicMaterial({color:'#ff7ab0'})};
+    M.glow.emissiveIntensity=.45;M.heart.userData.shared=true;
+    const sph=(r,w=32,h=20)=>new THREE.SphereGeometry(r,w,h);
+    this.feet=[];
+    for(const s of [-1,1]){const f=new THREE.Mesh(sph(.2,24,14),M.trim);f.scale.set(1,.6,1.3);f.position.set(s*.26,.11,.06);root.add(f);this.feet.push(f);}
+    const body=new THREE.Group();body.position.y=.72;root.add(body);
+    const torso=new THREE.Mesh(sph(.55,40,28),M.shell);torso.scale.set(1,.92,.9);body.add(torso);
+    const belly=new THREE.Mesh(sph(.36,32,20),M.belly);belly.scale.set(1,1.05,.35);belly.position.set(0,-.04,.4);body.add(belly);
+    const hs=new THREE.Shape();hs.moveTo(0,-.9);hs.bezierCurveTo(-1.4,0,-.7,1.1,0,.45);hs.bezierCurveTo(.7,1.1,1.4,0,0,-.9);
+    const heartM=new THREE.Mesh(new THREE.ShapeGeometry(hs,16),M.heart);heartM.position.set(0,-.02,.535);heartM.scale.setScalar(.12);body.add(heartM);
+    const headPivot=new THREE.Group();headPivot.position.y=.5;body.add(headPivot);
+    const head=new THREE.Mesh(sph(.82,48,32),M.shell);head.scale.set(1.2,.95,1);head.position.y=.62;headPivot.add(head);
+    const bezel=new THREE.Mesh(new THREE.SphereGeometry(.828,48,24,Math.PI/2-1.0,2.0,Math.PI/2-.68,1.36),M.trim);head.add(bezel);
+    this.fw=opts.faceW||512;this.fh=this.fw/2;
+    const fc=document.createElement('canvas');fc.width=this.fw;fc.height=this.fh;
+    this.fx=fc.getContext('2d');this.tex=new THREE.CanvasTexture(fc);this.tex.anisotropy=4;
+    const screen=new THREE.Mesh(new THREE.SphereGeometry(.836,48,24,Math.PI/2-.93,1.86,Math.PI/2-.6,1.2),new THREE.MeshBasicMaterial({map:this.tex}));head.add(screen);
+    const mkArm=s=>{const p=new THREE.Group();p.position.set(s*.5,.06,0);body.add(p);
+      p.add(new THREE.Mesh(sph(.11,20,14),M.limb));
+      const a=new THREE.Mesh(new THREE.CylinderGeometry(.09,.08,.24,16),M.limb);a.position.y=-.14;p.add(a);
+      const h=new THREE.Mesh(sph(.13,20,14),M.trim);h.position.y=-.3;p.add(h);return p;};
+    this.armL=mkArm(-1);this.armR=mkArm(1);
+    Object.assign(this,{group:g,root,body,headPivot,head,heartM});
+    this.accParts=[];this.accAnims=[];this.parts=[];
+    this.t=Math.random()*10;this.action=null;this.aT=0;this.aDur=0;this.emo='neutral';this.baseEmo='neutral';this.emoUntil=Infinity;
+    this.blinkNext=this.t+2;this.blinkT=-1;this.look={x:0,y:0};this.lookTarget={x:0,y:0};this.walk=0;this.sleeping=false;this.onActionEnd=null;this.pendingSkin=null;
+    this.cur={rootY:0,rootRotY:0,sx:1,sy:1,bodyY:.72,headX:0,headY:0,headZ:0,armL:-.2,armR:.2,armLx:0,armRx:0};
+    this.applySkin(typeof opts.skin==='string'?SKIN_BY[opts.skin]:(opts.skin||SKINS[0]));
+  }
+  applySkin(sk){
+    this.skin=sk;const M=this.M;
+    M.shell.color.set(sk.shell);M.belly.color.set(sk.belly);M.trim.color.set(sk.trim);M.limb.color.set(sk.limb||sk.shell);M.inner.color.set(sk.inner);
+    M.glow.color.set(sk.accent);M.glow.emissive.set(sk.accent);M.heart.color.set(sk.accent==='#7ED957'||sk.accent==='#7BD88F'?'#FF7AB0':sk.accent);
+    for(const o of this.accParts){if(o.parent)o.parent.remove(o);o.traverse(x=>{if(x.geometry)x.geometry.dispose();if(x.material&&!x.material.userData.shared)x.material.dispose();});}
+    this.accParts=[];this.accAnims=[];this.buildAcc(sk);
+  }
+  buildAcc(sk){
+    const M=this.M,hp=this.headPivot,HC=.62,A=this.accAnims;
+    const add=(parent,o)=>{parent.add(o);this.accParts.push(o);return o;};
+    const mat=c=>new THREE.MeshStandardMaterial({color:c,roughness:.45});
+    const sph=(r,w=20,h=14)=>new THREE.SphereGeometry(r,w,h);
+    for(const a of sk.acc){switch(a){
+      case 'antenna':{const g=new THREE.Group();g.position.set(0,HC+.72,0);const st=new THREE.Mesh(new THREE.CylinderGeometry(.028,.034,.3,10),M.trim);st.position.y=.15;g.add(st);const tip=new THREE.Mesh(sph(.12),M.glow);tip.position.y=.34;g.add(tip);add(hp,g);A.push(t=>{g.rotation.z=Math.sin(t*4.5)*.14;g.rotation.x=Math.sin(t*3.1)*.06;});break;}
+      case 'discs':{for(const s of [-1,1]){const d=new THREE.Mesh(new THREE.CylinderGeometry(.2,.2,.14,28),M.trim);d.rotation.z=Math.PI/2;d.position.set(s*.97,HC,0);add(hp,d);const d2=new THREE.Mesh(new THREE.CylinderGeometry(.12,.12,.16,24),M.glow);d2.rotation.z=Math.PI/2;d2.position.set(s*.99,HC,0);add(hp,d2);}break;}
+      case 'bow':{const g=new THREE.Group();g.position.set(.6,HC+.6,.22);g.rotation.z=-.5;const m=mat(sk.bow||sk.accent);for(const s of [-1,1]){const c=new THREE.Mesh(new THREE.ConeGeometry(.15,.28,20),m);c.rotation.z=s*Math.PI/2;c.position.x=s*.13;g.add(c);}g.add(new THREE.Mesh(sph(.08,16,12),m));add(hp,g);A.push(t=>{g.scale.setScalar(1+Math.sin(t*3)*.04);});break;}
+      case 'catEars':{for(const s of [-1,1]){const g=new THREE.Group();g.position.set(s*.5,HC+.58,0);g.rotation.z=-s*.38;const e=new THREE.Mesh(new THREE.ConeGeometry(.27,.46,24),M.shell);e.position.y=.2;g.add(e);const i=new THREE.Mesh(new THREE.ConeGeometry(.15,.3,20),M.inner);i.position.set(0,.16,.1);g.add(i);add(hp,g);A.push(t=>{const tw=Math.pow(Math.max(0,Math.sin(t*1.3+s*.7)),24);g.rotation.z=-s*(.38+tw*.3);});}break;}
+      case 'tail':{const g=new THREE.Group();g.position.set(0,-.2,-.42);const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,.05,-.3),new THREE.Vector3(.12,.35,-.45),new THREE.Vector3(.05,.66,-.35)]);g.add(new THREE.Mesh(new THREE.TubeGeometry(curve,24,.075,10,false),M.shell));const tip=new THREE.Mesh(sph(.1),M.inner);tip.position.set(.05,.66,-.35);g.add(tip);add(this.body,g);A.push(t=>{g.rotation.y=Math.sin(t*3)*.45;g.rotation.z=Math.sin(t*3)*.12;});break;}
+      case 'bunnyEars':{for(const s of [-1,1]){const g=new THREE.Group();g.position.set(s*.3,HC+.64,0);const e=new THREE.Mesh(sph(.5,24,18),M.shell);e.scale.set(.3,1,.2);e.position.y=.46;g.add(e);const i=new THREE.Mesh(sph(.5,20,14),M.inner);i.scale.set(.17,.78,.1);i.position.set(0,.46,.06);g.add(i);add(hp,g);const flop=s>0;A.push(t=>{g.rotation.z=-s*.12-(flop?.55+Math.sin(t*2)*.08:Math.sin(t*1.7)*.05);g.rotation.x=flop?-.12:0;});}break;}
+      case 'bearEars':{for(const s of [-1,1]){const e=new THREE.Mesh(sph(.22,20,16),M.trim);e.scale.set(1,1,.6);e.position.set(s*.62,HC+.6,0);add(hp,e);const i=new THREE.Mesh(sph(.12,16,12),M.inner);i.scale.set(1,1,.4);i.position.set(s*.62,HC+.6,.1);add(hp,i);}break;}
+      case 'leaf':{const g=new THREE.Group();g.position.set(sk.acc.includes('bearEars')?.0:0,HC+.72,0);const st=new THREE.Mesh(new THREE.CylinderGeometry(.025,.03,.26,8),mat('#3E9B4F'));st.position.y=.13;g.add(st);const lm=mat(sk.leaf||'#6CD47E');for(const s of [-1,1]){const l=new THREE.Mesh(sph(.2),lm);l.scale.set(1,.3,.55);l.position.set(s*.17,.3,0);l.rotation.z=s*.45;g.add(l);}add(hp,g);A.push(t=>{g.rotation.z=Math.sin(t*2.2)*.15;});break;}
+      case 'beanie':{const g=new THREE.Group();g.position.y=HC;g.scale.set(1.2,.95,1);const hm=mat(sk.hat||'#FF5A6E'),wm=mat('#FFFFFF');g.add(new THREE.Mesh(new THREE.SphereGeometry(.86,36,14,0,Math.PI*2,0,.8),hm));const brim=new THREE.Mesh(new THREE.TorusGeometry(.61,.08,12,48),wm);brim.rotation.x=Math.PI/2;brim.position.y=.6;g.add(brim);const pom=new THREE.Mesh(sph(.17,18,14),wm);pom.position.y=.98;g.add(pom);add(hp,g);
+        const sc=new THREE.Mesh(new THREE.TorusGeometry(.35,.11,12,40),hm);sc.rotation.x=Math.PI/2;sc.position.y=.44;add(this.body,sc);const end=new THREE.Mesh(new THREE.BoxGeometry(.17,.42,.07),hm);end.position.set(.2,.2,.44);add(this.body,end);A.push(t=>{end.rotation.z=.18+Math.sin(t*2.4)*.1;pom.position.y=.98+Math.sin(t*4)*.02;});break;}
+      case 'nightcap':{const g=new THREE.Group();g.position.set(-.05,HC+.55,0);const cm=mat(sk.hat||'#4B5BD6'),ym=mat('#FFE27A');const cone=new THREE.Mesh(new THREE.ConeGeometry(.56,1.15,32),cm);cone.position.y=.5;g.add(cone);const brim=new THREE.Mesh(new THREE.TorusGeometry(.58,.08,12,48),mat('#FFFFFF'));brim.rotation.x=Math.PI/2;brim.position.y=-.04;g.add(brim);const pom=new THREE.Mesh(sph(.13),ym);pom.position.y=1.1;g.add(pom);
+        for(let i=0;i<5;i++){const st=new THREE.Mesh(new THREE.OctahedronGeometry(.05),ym);const a=i*1.3,yy=.15+i*.17,rr=.56*(1-(yy+.075)/1.15);st.position.set(Math.cos(a)*rr,yy,Math.sin(a)*rr);g.add(st);}
+        add(hp,g);A.push(t=>{g.rotation.z=.55+Math.sin(t*1.6)*.07;});break;}
+    }}
+  }
+  wear(sk,anim=true){if(typeof sk==='string')sk=SKIN_BY[sk];if(!sk)return;if(!anim||REDUCE){this.applySkin(sk);return;}this.pendingSkin=sk;this.poof();this.play('change');this.setEmotion('happy',2.2);}
+  poof(){if(REDUCE)return;const sk=this.skin,cols=[sk.shell,sk.accent,sk.inner,'#FFFFFF',sk.trim,sk.blush];
+    for(let i=0;i<22;i++){const m=new THREE.Mesh(PG[i%3],new THREE.MeshBasicMaterial({color:cols[i%cols.length]}));m.position.set(rand(-.3,.3),rand(.9,1.9),rand(-.1,.5));
+      const v=new THREE.Vector3(rand(-1,1),rand(.2,1.3),rand(-.3,1)).normalize().multiplyScalar(rand(1.8,3.4));this.group.add(m);this.parts.push({m,v,life:0,max:rand(.8,1.2)});}}
+  setEmotion(e,dur=2.5){this.emo=e;this.emoUntil=dur?this.t+dur:Infinity;}
+  play(name,dur){const D={wave:2.4,dance:4.2,jump:1.1,spin:1.3,stretch:2.6,laugh:2.2,shrug:1.8,nod:1.4,hide:3.4,giggle:1.2,change:1.2};
+    this.action=name;this.aT=0;this.aDur=dur||D[name]||2;this._swapped=false;if(this.sleeping&&name!=='hide')this.sleeping=false;}
+  update(dt){
+    this.t+=dt;const t=this.t,c=this.cur;
+    if(t>this.emoUntil){this.emo=this.sleeping?'sleep':this.baseEmo;this.emoUntil=Infinity;}
+    if(this.sleeping&&this.emoUntil===Infinity)this.emo='sleep';
+    const breathe=REDUCE?0:Math.sin(t*2.2);
+    const T={rootY:0,rootRotY:0,sx:1,sy:1,bodyY:.72+breathe*.022,headX:-this.look.y*.2,headY:this.look.x*.42,headZ:REDUCE?0:Math.sin(t*.9)*.05,armL:-.2-breathe*.05,armR:.2+breathe*.05,armLx:0,armRx:0};
+    if(this.walk>0){const w=this.walk,s=t*11;T.rootY+=Math.abs(Math.sin(s))*.08*w;T.armLx=Math.sin(s)*.7*w;T.armRx=-Math.sin(s)*.7*w;T.headZ+=Math.sin(s)*.06*w;this.feet[0].position.z=.06+Math.sin(s)*.14*w;this.feet[1].position.z=.06-Math.sin(s)*.14*w;}
+    else{this.feet[0].position.z=this.feet[1].position.z=.06;}
+    if(this.sleeping){T.bodyY=.68+Math.sin(t*1.1)*.02;T.headX=.3;T.headY=0;T.headZ=.16;T.armL=-.05;T.armR=.05;}
+    if(this.action){
+      this.aT+=dt;const a=this.aT,p=Math.min(1,a/this.aDur);
+      switch(this.action){
+        case 'wave':{const up=smooth(a/.3)*smooth((this.aDur-a)/.3);T.armR=.2+up*(2.35+Math.sin(a*12)*.35);T.headZ+=up*.14;break;}
+        case 'dance':{const s=a*8;T.rootY+=Math.abs(Math.sin(s))*.16;T.rootRotY=Math.sin(a*4)*.45;T.armL=-.4-(Math.sin(s)*.5+.5)*1.6;T.armR=.4+(Math.cos(s)*.5+.5)*1.6;T.headZ+=Math.sin(a*4)*.2;break;}
+        case 'jump':{if(p<.18){T.sy=1-.18*Math.sin(p/.18*Math.PI);T.sx=1+(1-T.sy)*.6;}else if(p<.82){const q=(p-.18)/.64,k=Math.sin(q*Math.PI);T.rootY+=k*1.1;T.sy=1+.08*k;T.sx=1-.04*k;T.armL=-.2-2.2*k;T.armR=.2+2.2*k;}else{const q=(p-.82)/.18;T.sy=1-.14*Math.sin(q*Math.PI);T.sx=1+(1-T.sy)*.6;}break;}
+        case 'spin':{T.rootRotY=easeInOut(p)*Math.PI*2;c.rootRotY=T.rootRotY;const k=Math.sin(p*Math.PI);T.rootY+=k*.3;T.armL=-.2-1.2*k;T.armR=.2+1.2*k;break;}
+        case 'change':{T.rootRotY=easeInOut(p)*Math.PI*2;c.rootRotY=T.rootRotY;const k=p<.5?1-smooth(p/.5)*.8:.2+.8*backOut((p-.5)/.5);T.sx=T.sy=k;c.sx=c.sy=k;T.rootY+=Math.sin(p*Math.PI)*.45;T.armL=-1.4;T.armR=1.4;
+          if(p>=.5&&!this._swapped){this._swapped=true;if(this.pendingSkin){this.applySkin(this.pendingSkin);this.pendingSkin=null;}this.poof();}break;}
+        case 'stretch':{const up=smooth(a/.5)*smooth((this.aDur-a)/.5);T.armL=-.2-up*2.75;T.armR=.2+up*2.75;T.sy=1+up*.06;T.headX=-.25*up;break;}
+        case 'laugh':{T.bodyY+=Math.abs(Math.sin(a*18))*.05;T.headX=-.15;T.headZ+=Math.sin(a*9)*.07;T.armL=-.5;T.armR=.5;break;}
+        case 'shrug':{const k=Math.sin(p*Math.PI);T.armL=-.2-k*.9;T.armR=.2+k*.9;T.armLx=T.armRx=-k*.6;T.headZ+=k*.25;T.bodyY+=k*.04;break;}
+        case 'giggle':{T.rootY+=Math.abs(Math.sin(a*14))*.12*(1-p);T.headZ+=Math.sin(a*20)*.08*(1-p);break;}
+        case 'nod':{T.headX=Math.sin(p*Math.PI*4)*.25;break;}
+        case 'hide':{const k=p<.2?smooth(p/.2):p>.8?smooth((1-p)/.2):1;T.sx=T.sy=1-k*.98;T.rootRotY=k*Math.PI;break;}
+      }
+      if(this.aT>=this.aDur){const done=this.action;this.action=null;if(done==='spin'||done==='change'){c.rootRotY-=Math.PI*2;T.rootRotY=0;}if(done==='change'&&this.pendingSkin){this.applySkin(this.pendingSkin);this.pendingSkin=null;}if(this.onActionEnd)this.onActionEnd(done);}
+    }
+    const k=1-Math.exp(-dt*(this.action?30:9));
+    for(const key in T)c[key]=lerp(c[key],T[key],k);
+    this.root.position.y=c.rootY;this.root.rotation.y=c.rootRotY;this.root.scale.set(c.sx,c.sy,c.sx);
+    this.body.position.y=c.bodyY;this.headPivot.rotation.set(c.headX,c.headY,c.headZ);
+    this.armL.rotation.set(c.armLx,0,c.armL);this.armR.rotation.set(c.armRx,0,c.armR);
+    if(!REDUCE)for(const f of this.accAnims)f(t);
+    for(let i=this.parts.length-1;i>=0;i--){const q=this.parts[i];q.life+=dt;q.m.position.addScaledVector(q.v,dt);q.v.y-=4.5*dt;q.v.multiplyScalar(1-dt*1.6);q.m.rotation.x+=dt*7;q.m.rotation.y+=dt*5;
+      q.m.scale.setScalar(Math.max(.001,1-q.life/q.max));if(q.life>=q.max){this.group.remove(q.m);q.m.material.dispose();this.parts.splice(i,1);}}
+    let open=1;
+    if(this.blinkT<0&&t>this.blinkNext)this.blinkT=0;
+    if(this.blinkT>=0){this.blinkT+=dt;const b=this.blinkT/.16;open=Math.abs(1-2*Math.min(1,b));if(b>=1){this.blinkT=-1;this.blinkNext=t+rand(2,6);open=1;}}
+    const kl=Math.min(1,dt*7);this.look.x+=(this.lookTarget.x-this.look.x)*kl;this.look.y+=(this.lookTarget.y-this.look.y)*kl;
+    drawFace(this.fx,this.fw,this.fh,this.emo,open,this.look.x,this.look.y,t,this.skin);this.tex.needsUpdate=true;
+    const pulse=this.emo==='sleep'||this.emo==='sleepy'?.1:Math.pow(Math.max(0,Math.sin(t*3)),6);
+    this.heartM.scale.setScalar(.12*(1+.18*pulse));
+    this.M.glow.emissiveIntensity=.3+.35*pulse;
+  }
+}
+
+function addLights(scene,intensity=1){
+  scene.add(new THREE.HemisphereLight(0xffffff,0x9a8fb8,.9*intensity));
+  const d=new THREE.DirectionalLight(0xffffff,.8*intensity);d.position.set(3,5,4);scene.add(d);
+  const rim=new THREE.DirectionalLight(0xffc4e6,.55*intensity);rim.position.set(-4,3,-3);scene.add(rim);
+}
+function makeRenderer(canvas){const r=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});r.setPixelRatio(Math.min(2,window.devicePixelRatio||1));r.setClearColor(0x000000,0);return r;}
+function watchVisible(el,obj){if(!('IntersectionObserver'in window)){obj.visible=true;return;}new IntersectionObserver(es=>{for(const e of es)obj.visible=e.isIntersecting;},{rootMargin:'80px'}).observe(el);}
+function dragRotate(el,state){let down=false,px=0,py=0;
+  el.addEventListener('pointerdown',e=>{down=true;px=e.clientX;py=e.clientY;state.dragging=true;el.setPointerCapture&&el.setPointerCapture(e.pointerId);});
+  el.addEventListener('pointermove',e=>{if(!down)return;state.ry+=(e.clientX-px)*.008;state.rx=clamp(state.rx+(e.clientY-py)*.004,-.35,.5);px=e.clientX;py=e.clientY;});
+  const up=()=>{down=false;state.dragging=false;};el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);}
+function projectTo(v,cam,w,h){const p=v.clone().project(cam);return{x:(p.x*.5+.5)*w,y:(-p.y*.5+.5)*h,z:p.z};}
+function contactShadow(){const sc=document.createElement('canvas');sc.width=sc.height=128;const sx=sc.getContext('2d');const gr=sx.createRadialGradient(64,64,4,64,64,62);gr.addColorStop(0,'rgba(40,20,70,.45)');gr.addColorStop(1,'rgba(40,20,70,0)');sx.fillStyle=gr;sx.fillRect(0,0,128,128);
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(2.4,2.4),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(sc),transparent:true,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005;return m;}
+
+if(!window.THREE){
+  for(const id of ['stage','desk','stateWrap','archWrap','galWrap']){const el=document.getElementById(id);if(el){const m=document.createElement('p');m.className='muted';m.style.cssText='position:absolute;inset:auto 16px 16px 16px;font-size:.85rem';m.textContent='The 3D prototype needs three.js from cdnjs, which did not load. Check your connection and reload.';el.appendChild(m);}}
+  return;
+}
+
+const loops=[];const skinHooks=[];
+
+/* ---------------- Hero ---------------- */
+const hero=(()=>{
+  const stage=$('#stage'),canvas=$('#heroCanvas'),bubble=$('#heroBubble'),skinName=$('#skinName');
+  const renderer=makeRenderer(canvas),scene=new THREE.Scene();addLights(scene);
+  const cam=new THREE.PerspectiveCamera(34,1,.1,100);
+  const bot=new Bot({skin:'bubblegum'});scene.add(bot.group);
+  const shadow=contactShadow();scene.add(shadow);
+  const S={visible:true,w:1,h:1};watchVisible(stage,S);
+  function resize(){S.w=stage.clientWidth;S.h=stage.clientHeight;renderer.setSize(S.w,S.h,false);cam.aspect=S.w/S.h;const far=cam.aspect<.9?11.8:9.2;cam.position.set(0,2.1,far);cam.lookAt(0,1.85,0);cam.updateProjectionMatrix();}
+  new ResizeObserver(resize).observe(stage);resize();
+  let lastInteract=0,mouseSeen=0,bubbleUntil=0,idleLookAt=0,hideBack=null,autoSkin=true,nextSkin=9,current='bubblegum';
+  function say(text,ms=2800){bubble.textContent=text;bubble.classList.add('on');bubbleUntil=bot.t+ms/1000;}
+  // wardrobe chips
+  const chipsEl=$('#skinChips');
+  for(const sk of SKINS){const b=document.createElement('button');b.className='chip sw';b.dataset.skin=sk.id;b.setAttribute('aria-pressed',sk.id===current);b.innerHTML=`<i style="background:${sk.shell};border-color:${sk.trim}"></i>${sk.name}`;b.addEventListener('click',()=>wear(sk.id));chipsEl.appendChild(b);}
+  const autoBtn=document.createElement('button');autoBtn.className='chip auto';autoBtn.setAttribute('aria-pressed','true');autoBtn.textContent='Auto outfit: on';
+  autoBtn.addEventListener('click',()=>{autoSkin=!autoSkin;autoBtn.setAttribute('aria-pressed',autoSkin);autoBtn.textContent=autoSkin?'Auto outfit: on':'Auto outfit: off';nextSkin=bot.t+12;});chipsEl.appendChild(autoBtn);
+  function wear(id,announce=true){const sk=SKIN_BY[id];if(!sk)return;if(id===current&&!bot.pendingSkin){bot.play('giggle');say(`I'm already wearing ${sk.name}!`,1800);return;}
+    current=id;lastInteract=bot.t;nextSkin=bot.t+rand(14,20);bot.sleeping=false;bot.wear(sk);
+    stage.style.setProperty('--skin',sk.shell);skinName.textContent=sk.name;
+    chipsEl.querySelectorAll('[data-skin]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.skin===id));
+    if(announce)setTimeout(()=>say(pick([`Ta-da! ${sk.name} time.`,`New outfit: ${sk.name}!`,`How do I look in ${sk.name}?`]),2200),650);
+    skinHooks.forEach(f=>f(id));}
+  const otherSkin=()=>pick(SKINS.filter(s=>s.id!==current)).id;
+  document.addEventListener('pointermove',e=>{const r=stage.getBoundingClientRect();const cx=r.left+r.width/2,cy=r.top+r.height*.36;
+    bot.lookTarget.x=clamp((e.clientX-cx)/(r.width*.6),-1,1);bot.lookTarget.y=clamp((e.clientY-cy)/(r.height*.7),-1,1);mouseSeen=bot.t;});
+  const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
+  canvas.addEventListener('click',e=>{const r=canvas.getBoundingClientRect();ndc.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1);ray.setFromCamera(ndc,cam);
+    if(ray.intersectObject(bot.root,true).length){lastInteract=bot.t;
+      if(bot.sleeping){bot.sleeping=false;bot.play('stretch');bot.setEmotion('happy',2.5);say('Oh! I was just resting my eyes.');}
+      else{bot.play('giggle');bot.setEmotion(Math.random()<.3?'love':'happy',1.6);say(pick(['Hey, that tickles!','Hehe. Again?','Boop received.']),1800);}}});
+  const JOKES=['Why did the robot take a vacation? It needed to recharge.','I would tell you a joke about RAM, but I forgot it.','My favourite workout is Ctrl + Alt + Stretch.','I tried to catch some fog this morning. I mist.','Debugging: removing the needles from the haystack you put there.'];
+  const timeStr=()=>new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  function act(name){lastInteract=bot.t;if(hideBack){clearTimeout(hideBack);hideBack=null;}
+    switch(name){
+      case 'wave':bot.play('wave');bot.setEmotion('happy',2.4);say('Hi there!');break;
+      case 'dance':bot.play('dance');bot.setEmotion('happy',4.2);say('Busting a tiny move.');break;
+      case 'jump':bot.play('jump');bot.setEmotion('surprised',1.1);setTimeout(()=>bot.setEmotion('happy',1.5),1100);break;
+      case 'spin':bot.play('spin');bot.setEmotion('surprised',1.2);setTimeout(()=>{bot.setEmotion('dizzy',1.8);say('Whoa. The room is spinning.',1800);},1300);break;
+      case 'stretch':bot.play('stretch');bot.setEmotion('happy',2.6);say('Stretch break! Arms up, shoulders back, 20 seconds.');break;
+      case 'joke':bot.play('laugh');bot.setEmotion('laugh',2.4);say(pick(JOKES),4200);break;
+      case 'time':bot.play('nod');say(`It's ${timeStr()}.`);break;
+      case 'sleep':bot.action=null;bot.sleeping=true;bot.emoUntil=Infinity;say('Nap time. Click me to wake me up.',2200);break;
+      case 'wake':bot.sleeping=false;bot.play('stretch');bot.setEmotion('happy',2.5);say("I'm back!");break;
+      case 'outfit':wear(otherSkin());break;
+      case 'hide':bot.setEmotion('sad',1.2);say('Okay, hiding for a bit. In the app I stay hidden until you call me.',3000);setTimeout(()=>bot.play('hide'),900);hideBack=setTimeout(()=>{bot.setEmotion('happy',2);},4300);break;
+      default:bot.play('shrug');bot.setEmotion('curious',2.2);say("I don't know that one yet. Try: dance, joke, wear the kitty.",3200);
+    }}
+  function emote(e){lastInteract=bot.t;bot.sleeping=e==='sleep';bot.setEmotion(e,e==='sleep'?0:3.5);if(e==='sleep')bot.emoUntil=Infinity;
+    if(e==='happy'||e==='wink')bot.play('giggle');else if(e==='surprised')bot.play('jump');else if(e==='dizzy')bot.play('spin');else if(e==='curious')bot.play('shrug');else if(e==='love')bot.play('nod');}
+  const RULES=[[/\b(dance|party|groove|boogie)\b/,'dance'],[/\b(wave|hi|hello|hey|yo)\b/,'wave'],[/\b(jump|hop)\b/,'jump'],[/\b(spin|twirl)\b/,'spin'],[/\b(stretch|break|exercise)\b/,'stretch'],[/\b(joke|funny|laugh)\b/,'joke'],[/\b(time|clock)\b/,'time'],[/\b(wake|come back|awake)\b/,'wake'],[/\b(sleep|nap|rest|good ?night)\b/,'sleep'],[/\b(hide|go away|shh|hush)\b/,'hide']];
+  const EMO_WORDS=[[/\b(happy|smile)\b/,'happy'],[/\b(sad|cry)\b/,'sad'],[/\b(angry|grumpy|mad)\b/,'angry'],[/\b(love|heart)\b/,'love'],[/\b(surprise|wow|shock)/,'surprised'],[/\b(dizzy|confused)\b/,'dizzy'],[/\b(curious|think|hmm)\b/,'curious'],[/\b(wink|playful)\b/,'wink']];
+  function command(text){const s=text.toLowerCase();
+    const named=SKINS.find(sk=>sk.kw.some(k=>new RegExp('\\b'+k+'\\b').test(s)));
+    if(/\b(wear|outfit|skin|dress|costume|clothes|change|be a|become|turn into|switch)\b/.test(s)){return named?wear(named.id):act('outfit');}
+    if(named&&/\b(cat|kitty|bunny|rabbit|panda|bear)\b/.test(s))return wear(named.id);
+    for(const [re,a] of RULES)if(re.test(s))return act(a);
+    for(const [re,e] of EMO_WORDS)if(re.test(s)){emote(e);return say(`Feeling ${e==='angry'?'grumpy':e}.`,1800);}
+    act('unknown');}
+  $('#askForm').addEventListener('submit',e=>{e.preventDefault();const v=$('#askInput').value.trim();if(v)command(v);$('#askInput').value='';});
+  $('#actChips').addEventListener('click',e=>{const b=e.target.closest('[data-cmd]');if(b)act(b.dataset.cmd);});
+  const head=new THREE.Vector3();
+  function update(dt){
+    bot.update(dt);
+    if(!REDUCE&&!bot.action&&!bot.sleeping){
+      if(autoSkin&&bot.t>nextSkin){wear(otherSkin());}
+      else if(bot.t-lastInteract>11){lastInteract=bot.t+rand(0,4);act(pick(['wave','spin','jump','stretch','dance']));}
+    }
+    if(bot.t-mouseSeen>3&&bot.t>idleLookAt){idleLookAt=bot.t+rand(1.5,3.5);bot.lookTarget={x:rand(-.7,.7),y:rand(-.4,.4)};}
+    const lift=bot.cur.rootY;shadow.scale.setScalar(Math.max(.2,(1-lift*.3)*bot.cur.sx));shadow.material.opacity=clamp(1-lift*.5,.3,1);
+    if(!S.visible)return;
+    renderer.render(scene,cam);
+    if(bubble.classList.contains('on')){if(bot.t>bubbleUntil)bubble.classList.remove('on');
+      bot.headPivot.getWorldPosition(head);head.y+=1.65;const p=projectTo(head,cam,S.w,S.h);
+      const bw=bubble.offsetWidth,bh=bubble.offsetHeight;const x=clamp(p.x-24,8,S.w-bw-8),y=clamp(p.y-bh-6,8,S.h-bh-8);
+      bubble.style.transform=`translate(${x}px,${y}px)`;}
+  }
+  return {update,bot,emote,say,wear,get current(){return current;}};
+})();
+loops.push(hero.update);
+
+/* ---------------- Emotion cards ---------------- */
+const EMOS=[
+  {id:'neutral',name:'Content',when:'Default resting face. Blinks every 2–6 s.',p:'P0'},
+  {id:'happy',name:'Happy',when:'After a command, a poke, a new outfit, or when you come back.',p:'P0'},
+  {id:'wink',name:'Playful',when:'A wink, only when you ask for one. Never during motion.',p:'P0'},
+  {id:'surprised',name:'Surprised',when:'Picked up, flung, or the cursor rushes past.',p:'P0'},
+  {id:'curious',name:'Curious',when:'Unknown command, or you hover nearby.',p:'P0'},
+  {id:'sleep',name:'Asleep',when:'No input for 10 minutes. Wakes on a poke.',p:'P0'},
+  {id:'sad',name:'Sad',when:'Told to go away. Lasts 2 s, then hides.',p:'P0'},
+  {id:'dizzy',name:'Dizzy',when:'After a spin or being thrown.',p:'P0'},
+  {id:'love',name:'Love',when:'Petted: slow hover back and forth.',p:'P1'},
+  {id:'angry',name:'Grumpy',when:'Poked 5 times in 10 s. Lasts 3 s.',p:'P1'}
+];
+const emoChips=$('#emoChips');
+for(const e of EMOS){const b=document.createElement('button');b.className='chip';b.textContent=e.name;b.addEventListener('click',()=>hero.emote(e.id));emoChips.appendChild(b);}
+const grid=$('#emoGrid'),cards=[];
+for(const e of EMOS){
+  const b=document.createElement('button');b.className='emo';b.type='button';b.setAttribute('aria-label',`Show ${e.name} on the model`);
+  b.innerHTML=`<canvas></canvas><span class="row"><b>${e.name}</b><span class="tag ${e.p==='P0'?'p0':''}">${e.p}</span></span><small>${e.when}</small>`;
+  b.addEventListener('click',()=>{hero.emote(e.id);hero.say(e.name+'.',1400);});
+  grid.appendChild(b);const cv=b.querySelector('canvas');cards.push({e,cv,ctx:cv.getContext('2d'),blinkNext:rand(1,4),blinkT:-1,t:rand(0,5)});
+}
+const gridState={visible:true};watchVisible(grid,gridState);
+loops.push(dt=>{if(!gridState.visible)return;const sk=hero.bot.skin;
+  for(const c of cards){c.t+=dt;const w=Math.round(c.cv.clientWidth*Math.min(2,devicePixelRatio||1)),h=Math.round(w/2);if(!w)continue;if(c.cv.width!==w){c.cv.width=w;c.cv.height=h;}
+    let open=1;if(c.blinkT<0&&c.t>c.blinkNext)c.blinkT=0;if(c.blinkT>=0){c.blinkT+=dt;const b=c.blinkT/.16;open=Math.abs(1-2*Math.min(1,b));if(b>=1){c.blinkT=-1;c.blinkNext=c.t+rand(2,6);}}
+    const lx=REDUCE?0:Math.sin(c.t*.7)*.4,ly=REDUCE?0:Math.sin(c.t*.5)*.2;
+    drawFace(c.ctx,w,h,c.e.id,open,lx,ly,REDUCE?0:c.t,sk);}
+});
+
+/* ---------------- Skin gallery ---------------- */
+const gallery=(()=>{
+  const wrap=$('#galWrap'),canvas=$('#galCanvas'),labels=$('#galLabels');
+  const renderer=makeRenderer(canvas),scene=new THREE.Scene();addLights(scene);
+  const cam=new THREE.PerspectiveCamera(30,1,.1,200);
+  const S={visible:true,w:1,h:1};watchVisible(wrap,S);
+  const SX=3.3,SY=4.1;
+  const selRing=new THREE.Mesh(new THREE.TorusGeometry(1.05,.06,10,64),new THREE.MeshBasicMaterial({color:tok('--accent')}));selRing.rotation.x=Math.PI/2;scene.add(selRing);
+  const items=SKINS.map((sk,i)=>{const b=new Bot({skin:sk,faceW:256});scene.add(b.group);b.group.userData.gi=i;
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(.9,1,.14,48),new THREE.MeshStandardMaterial({color:sk.shell,roughness:.55}));base.userData.gi=i;scene.add(base);
+    const l=document.createElement('div');l.className='gl';l.innerHTML=`<b>${sk.name}</b><small>${sk.when==='Launch'?sk.kind:sk.when}</small>`;labels.appendChild(l);
+    return {sk,b,l,base,next:rand(2,8),pos:new THREE.Vector3(),scr:{x:0,y:0}};});
+  let cols=5;
+  function layout(){const rows=Math.ceil(items.length/cols);items.forEach((it,i)=>{const row=Math.floor(i/cols),col=i%cols,n=Math.min(cols,items.length-row*cols);
+      it.pos.set((col-(n-1)/2)*SX,((rows-1)/2-row)*SY-1.3,0);it.b.group.position.copy(it.pos);it.base.position.set(it.pos.x,it.pos.y-.08,0);});
+    const wU=cols*SX+.6,hU=rows*SY+.6,tf=Math.tan(15*Math.PI/180);const d=Math.max((hU/2)/tf,(wU/2)/(tf*cam.aspect));cam.position.set(0,1.4,d);cam.lookAt(0,.2,0);cam.updateProjectionMatrix();}
+  function resize(){S.w=wrap.clientWidth;S.h=wrap.clientHeight;renderer.setSize(S.w,S.h,false);cam.aspect=S.w/S.h;cols=cam.aspect>1.35?5:3;layout();}
+  new ResizeObserver(resize).observe(wrap);resize();
+  let selected=0,hovered=-1;const mouse={x:0,y:0,in:false};
+  const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
+  function hit(e){const r=canvas.getBoundingClientRect();ndc.set((e.clientX-r.left)/r.width*2-1,-((e.clientY-r.top)/r.height)*2+1);ray.setFromCamera(ndc,cam);
+    const hits=ray.intersectObjects(items.map(i=>i.b.group).concat(items.map(i=>i.base)),true);for(const h of hits){let o=h.object;while(o&&o.userData.gi===undefined)o=o.parent;if(o)return o.userData.gi;}return -1;}
+  wrap.addEventListener('pointermove',e=>{const r=wrap.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;mouse.in=true;const i=hit(e);canvas.style.cursor=i>=0?'pointer':'default';
+    if(i!==hovered){hovered=i;if(i>=0){const b=items[i].b;if(!b.action)b.play('wave');b.setEmotion('happy',2);}}});
+  wrap.addEventListener('pointerleave',()=>{mouse.in=false;hovered=-1;});
+  wrap.addEventListener('click',e=>{const i=hit(e);if(i<0)return;const it=items[i];it.b.play('jump');it.b.setEmotion('love',1.8);hero.wear(it.sk.id);});
+  function select(id){selected=items.findIndex(it=>it.sk.id===id);items.forEach((it,i)=>it.l.classList.toggle('on',i===selected));}
+  skinHooks.push(select);select(hero.current);
+  const tmp=new THREE.Vector3();
+  function update(dt){if(!S.visible)return;
+    for(const it of items){const b=it.b;
+      if(mouse.in){b.lookTarget={x:clamp((mouse.x-it.scr.x)/260,-1,1),y:clamp((mouse.y-(it.scr.y-60))/260,-1,1)};}
+      else if(b.t>it.next){it.next=b.t+rand(1.5,3.5);b.lookTarget={x:rand(-.6,.6),y:rand(-.3,.4)};}
+      if(!REDUCE&&!b.action&&Math.random()<dt*.09)b.play(pick(['giggle','nod','spin','dance','stretch','wave','jump']));
+      b.update(dt);}
+    const s=items[selected];if(s){selRing.position.set(s.pos.x,s.pos.y-.02,0);selRing.material.color.set(tok('--accent'));selRing.scale.setScalar(1+Math.sin(performance.now()/300)*.03);}
+    renderer.render(scene,cam);
+    for(const it of items){tmp.copy(it.pos);tmp.y-=.25;const p=projectTo(tmp,cam,S.w,S.h);it.scr=p;it.l.style.transform=`translate(${p.x}px,${p.y+4}px) translate(-50%,0)`;}
+  }
+  return {update};
+})();
+loops.push(gallery.update);
+
+/* ---------------- State diagram ---------------- */
+const SDEF={
+  IDLE:{name:'Idle',cap:'breathe · blink · watch cursor',col:'--st-idle'},
+  WANDER:{name:'Wander',cap:'walk edges at 90 px/s',col:'--st-wander'},
+  ANTIC:{name:'Antic',cap:'funny bit or outfit change',col:'--st-antic'},
+  PERFORM:{name:'Perform',cap:'run your command',col:'--st-perform'},
+  HUSH:{name:'Hush',cap:'you are busy: fade + park',col:'--st-hush'},
+  HIDDEN:{name:'Hidden',cap:'fullscreen, share or call',col:'--st-hidden'},
+  SLEEP:{name:'Sleep',cap:'away 10 min: doze',col:'--st-sleep'}
+};
+const diagram=(()=>{
+  const wrap=$('#stateWrap'),canvas=$('#stateCanvas'),labels=$('#stateLabels');
+  const renderer=makeRenderer(canvas),scene=new THREE.Scene();addLights(scene,1.05);
+  const cam=new THREE.PerspectiveCamera(36,1,.1,100);
+  const world=new THREE.Group();scene.add(world);
+  const S={visible:true,w:1,h:1,rx:0,ry:.3,dragging:false};watchVisible(wrap,S);dragRotate(wrap,S);
+  const order=['WANDER','ANTIC','PERFORM','HUSH','HIDDEN','SLEEP'],R=3.3,nodes={};
+  const pos={IDLE:new THREE.Vector3(0,0,0)};order.forEach((id,i)=>{const a=i/6*Math.PI*2-Math.PI/2;pos[id]=new THREE.Vector3(Math.cos(a)*R,0,Math.sin(a)*R);});
+  const floor=new THREE.Mesh(new THREE.CircleGeometry(4.5,64),new THREE.MeshBasicMaterial({transparent:true,opacity:.55}));floor.rotation.x=-Math.PI/2;floor.position.y=-.62;world.add(floor);
+  const ringPts=[];for(let i=0;i<=96;i++){const a=i/96*Math.PI*2;ringPts.push(new THREE.Vector3(Math.cos(a)*R,0,Math.sin(a)*R));}
+  const ringLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints(ringPts),new THREE.LineDashedMaterial({dashSize:.18,gapSize:.14,transparent:true,opacity:.7}));ringLine.computeLineDistances();world.add(ringLine);
+  for(const id in SDEF){
+    const m=new THREE.Mesh(new THREE.SphereGeometry(id==='IDLE'?.58:.42,40,28),new THREE.MeshStandardMaterial({roughness:.35,metalness:.05,emissiveIntensity:0}));
+    m.position.copy(pos[id]);world.add(m);
+    const l=document.createElement('div');l.className='nl';l.innerHTML=`<b>${SDEF[id].name}</b><small>${SDEF[id].cap}</small>`;labels.appendChild(l);
+    nodes[id]={m,l,s:1,phase:Math.random()*6};
+  }
+  const halo=new THREE.Mesh(new THREE.TorusGeometry(.72,.035,10,64),new THREE.MeshBasicMaterial());halo.rotation.x=Math.PI/2;world.add(halo);
+  const edges={};
+  function curveFor(a,b){const pa=pos[a],pb=pos[b],mid=pa.clone().add(pb).multiplyScalar(.5);mid.y+=a==='IDLE'||b==='IDLE'?1.1:.8;if(!(a==='IDLE'||b==='IDLE'))mid.multiplyScalar(1.18).setY(.9);return new THREE.QuadraticBezierCurve3(pa.clone(),mid,pb.clone());}
+  const edgeMat=new THREE.LineBasicMaterial({transparent:true,opacity:.6});
+  for(const [a,b] of [['IDLE','WANDER'],['IDLE','ANTIC'],['IDLE','PERFORM'],['IDLE','HUSH'],['IDLE','HIDDEN'],['IDLE','SLEEP'],['HUSH','PERFORM'],['HUSH','HIDDEN']]){
+    const c=curveFor(a,b);world.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(c.getPoints(48)),edgeMat));edges[a+'>'+b]=c;}
+  const pulses=[];const pulseGeo=new THREE.SphereGeometry(.13,16,12);
+  let active='IDLE';
+  function applyTheme(){floor.material.color.set(tok('--surface-2'));ringLine.material.color.set(tok('--line-strong'));edgeMat.color.set(tok('--line-strong'));halo.material.color.set(tok('--accent'));
+    for(const id in nodes){const col=new THREE.Color(tok(SDEF[id].col));nodes[id].m.material.color.copy(col);nodes[id].m.material.emissive.copy(col);}}
+  applyTheme();
+  function transition(a,b){active=b;let c=edges[a+'>'+b],rev=false,temp=null;
+    if(!c){c=edges[b+'>'+a];rev=!!c;}
+    if(!c){c=curveFor(a,b);temp=new THREE.Line(new THREE.BufferGeometry().setFromPoints(c.getPoints(48)),new THREE.LineBasicMaterial({color:tok('--accent'),transparent:true,opacity:.9}));world.add(temp);}
+    const m=new THREE.Mesh(pulseGeo,new THREE.MeshBasicMaterial({color:tok('--accent')}));world.add(m);pulses.push({c,rev,m,t:0,temp});}
+  function resize(){S.w=wrap.clientWidth;S.h=wrap.clientHeight;renderer.setSize(S.w,S.h,false);cam.aspect=S.w/S.h;const d=cam.aspect<1?13.5:cam.aspect<1.5?10.5:9.2;cam.position.set(0,d*.62,d*.88);cam.lookAt(0,-.3,0);cam.updateProjectionMatrix();}
+  new ResizeObserver(resize).observe(wrap);resize();
+  const tmp=new THREE.Vector3();let time=0;
+  function update(dt){time+=dt;
+    for(let i=pulses.length-1;i>=0;i--){const p=pulses[i];p.t+=dt/.9;const u=clamp(p.t,0,1);p.m.position.copy(p.c.getPoint(p.rev?1-u:u));
+      if(p.temp)p.temp.material.opacity=.9*(1-smooth((p.t-1)/1.2));
+      if(p.t>2.2){world.remove(p.m);p.m.material.dispose();if(p.temp){world.remove(p.temp);p.temp.geometry.dispose();p.temp.material.dispose();}pulses.splice(i,1);}else if(p.t>1)p.m.visible=false;}
+    if(!S.visible)return;
+    if(!S.dragging&&!REDUCE)S.ry+=dt*.08;
+    world.rotation.set(S.rx,S.ry,0);
+    for(const id in nodes){const n=nodes[id],on=id===active;n.s=lerp(n.s,on?1.28:1,Math.min(1,dt*8));n.m.scale.setScalar(n.s);n.m.position.y=pos[id].y+(REDUCE?0:Math.sin(time*1.4+n.phase)*.06);n.m.material.emissiveIntensity=on?.45:.04;}
+    halo.position.copy(nodes[active].m.position);halo.scale.setScalar(active==='IDLE'?1.15:.88);halo.rotation.z+=dt*.8;
+    renderer.render(scene,cam);
+    for(const id in nodes){const n=nodes[id];n.m.getWorldPosition(tmp);tmp.y-=(id==='IDLE'?.75:.6)*n.s;const p=projectTo(tmp,cam,S.w,S.h);n.l.style.transform=`translate(${p.x}px,${p.y}px) translate(-50%,0)`;n.l.classList.toggle('on',id===active);}
+  }
+  return {update,transition,applyTheme};
+})();
+loops.push(diagram.update);
+
+/* ---------------- Architecture stack ---------------- */
+const arch=(()=>{
+  const wrap=$('#archWrap'),canvas=$('#archCanvas'),labels=$('#archLabels');
+  const renderer=makeRenderer(canvas),scene=new THREE.Scene();addLights(scene,1.05);
+  const cam=new THREE.PerspectiveCamera(34,1,.1,100);
+  const world=new THREE.Group();scene.add(world);
+  const S={visible:true,w:1,h:1,rx:0,ry:-.55,dragging:false};watchVisible(wrap,S);dragRotate(wrap,S);
+  const GAP=.82,slabs=[],tags=[];
+  const lineMat=new THREE.LineBasicMaterial({transparent:true,opacity:.35});
+  for(let i=0;i<6;i++){
+    const geo=new THREE.BoxGeometry(4.4,.22,2.6);
+    const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({roughness:.55,metalness:.05,transparent:true,opacity:.92}));m.position.y=i*GAP;world.add(m);
+    const e=new THREE.LineSegments(new THREE.EdgesGeometry(geo),lineMat);e.position.y=i*GAP;world.add(e);
+    slabs.push(m);const tg=document.createElement('div');tg.className='lt';tg.textContent=i+1;labels.appendChild(tg);tags.push({el:tg,anchor:new THREE.Vector3(2.2,i*GAP+.12,1.3)});
+  }
+  const mini=new Bot({skin:'kitty',faceW:256});mini.group.scale.setScalar(.3);mini.group.position.set(-1.2,4*GAP+.11,.2);world.add(mini.group);
+  const shapeM=new THREE.Mesh(new THREE.RingGeometry(.28,.36,40),new THREE.MeshBasicMaterial({side:THREE.DoubleSide,transparent:true,opacity:.9}));shapeM.rotation.x=-Math.PI/2;shapeM.position.set(-1.2,1*GAP+.12,.2);world.add(shapeM);
+  const flows=[];const pg=new THREE.SphereGeometry(.07,12,10);
+  const mk=(colTok,x,z,y0,y1,n)=>{const mat=new THREE.MeshBasicMaterial();for(let i=0;i<n;i++){const m=new THREE.Mesh(pg,mat);world.add(m);flows.push({m,x,z,y0,y1,ph:i/n});}return {mat,colTok};};
+  const fUp=mk('--l4',1.6,.75,0,3*GAP,7),fDown=mk('--eye',1.6,-.75,4*GAP,0,7),fCmd=mk('--l5',.5,1.0,5*GAP,3*GAP,4);
+  const LCOL=['--l1','--l2','--l3','--l4','--l5','--l6'];
+  function applyTheme(){slabs.forEach((s,i)=>s.material.color.set(tok(LCOL[i])));lineMat.color.set(tok('--ink'));for(const f of [fUp,fDown,fCmd])f.mat.color.set(tok(f.colTok));shapeM.material.color.set(tok('--eye'));
+    document.querySelectorAll('#layerList .lt').forEach(el=>{const n=+el.textContent;el.style.background=tok(LCOL[n-1]);el.style.color='#fff';});
+    tags.forEach((t,i)=>{t.el.style.background=tok(LCOL[i]);t.el.style.color='#fff';});}
+  applyTheme();
+  function resize(){S.w=wrap.clientWidth;S.h=wrap.clientHeight;renderer.setSize(S.w,S.h,false);cam.aspect=S.w/S.h;const d=cam.aspect<1?14:cam.aspect<1.4?11.5:10;cam.position.set(0,2.05+d*.42,d);cam.lookAt(0,2.05,0);cam.updateProjectionMatrix();}
+  new ResizeObserver(resize).observe(wrap);resize();
+  const tmp=new THREE.Vector3();let time=0,nextOutfit=8;
+  function update(dt){if(!S.visible)return;time+=dt;
+    if(!S.dragging&&!REDUCE)S.ry=lerp(S.ry,-.55+Math.sin(time*.25)*.5,Math.min(1,dt*.8));
+    world.rotation.set(S.rx+.08,S.ry,0);
+    for(const f of flows){const u=REDUCE?f.ph:(time*.35+f.ph)%1;f.m.position.set(f.x,lerp(f.y0,f.y1,u),f.z);f.m.scale.setScalar(Math.sin(u*Math.PI)*1+.2);}
+    mini.lookTarget={x:Math.sin(time*.6)*.6,y:0};
+    if(!REDUCE&&!mini.action){if(time>nextOutfit){nextOutfit=time+rand(10,16);mini.wear(pick(SKINS.filter(s=>s.id!==mini.skin.id)));}else if(Math.random()<dt*.12)mini.play(pick(['wave','jump','spin']));}
+    mini.update(dt);
+    shapeM.material.opacity=.5+.4*Math.sin(time*3);
+    renderer.render(scene,cam);
+    for(const t of tags){tmp.copy(t.anchor);world.localToWorld(tmp);const p=projectTo(tmp,cam,S.w,S.h);t.el.style.transform=`translate(${p.x}px,${p.y}px) translate(-50%,-50%)`;}
+  }
+  return {update,applyTheme};
+})();
+loops.push(arch.update);
+
+/* ---------------- Desktop simulation ---------------- */
+const sim=(()=>{
+  const desk=$('#desk'),canvas=$('#deskCanvas'),notes=$('#winNotes'),present=$('#winPresent'),ring=$('#deskRing'),bubble=$('#deskBubble'),notesText=$('#notesText');
+  const renderer=makeRenderer(canvas),scene=new THREE.Scene();addLights(scene);
+  const cam=new THREE.OrthographicCamera(0,1,1,0,.1,1000);cam.position.z=300;
+  const bot=new Bot({skin:'sunny'});scene.add(bot.group);
+  const V={visible:true};watchVisible(desk,V);
+  const HF=3.0;let W=800,H=420,base=21;const TASK=40;
+  const st={x:150,y:0,surface:'taskbar',target:null,hop:null,face:0,scaleT:1,scale:1,state:'IDLE',t:0,nextWander:2.5,nextAntic:7,lastAntic:'',avoidCD:0,bubbleUntil:0,lookAt:0};
+  const flags={typing:false,full:false,away:false};
+  const ground=()=>H-TASK;
+  const nr=()=>({x:notes.offsetLeft,y:notes.offsetTop,w:notes.offsetWidth,h:notes.offsetHeight});
+  let seq=0,timers=[];
+  const later=(s,fn)=>{const my=seq;timers.push({at:st.t+s,fn,my});};
+  const guard=fn=>{const my=seq;return ()=>{if(my===seq&&fn)fn();};};
+  function interrupt(){seq++;timers=[];st.target=null;if(st.hop)st.hop.then=null;if(bot.action!=='change')bot.action=null;}
+  function walkTo(x,then){st.target={x,then:guard(then)};}
+  function hopTo(x,y,surface,then){st.hop={x0:st.x,y0:st.y,x1:x,y1:y,t:0,dur:.55+Math.min(.6,Math.abs(y-st.y)/600),then:guard(then)};st.surface=surface;}
+  function toTaskbar(x,then){if(st.surface!=='taskbar')hopTo(clamp(st.x,40,W-40),ground(),'taskbar',()=>walkTo(x,then));else walkTo(x,then);}
+  function say(text,s=2.6){bubble.textContent=text;bubble.classList.add('on');st.bubbleUntil=st.t+s;}
+  const logEl=$('#simLog'),dot=$('#simDot'),stateEl=$('#simState'),why=$('#simWhy'),foot=$('#simFoot');
+  const fmt=s=>{const m=Math.floor(s/60),x=Math.floor(s%60);return String(m).padStart(2,'0')+':'+String(x).padStart(2,'0');};
+  function go(state,reason){if(state===st.state){why.textContent=reason;return;}const prev=st.state;st.state=state;
+    stateEl.textContent=SDEF[state].name;dot.style.background=`var(${SDEF[state].col})`;why.textContent=reason;
+    const li=document.createElement('li');li.innerHTML=`<span>${fmt(st.t)}</span><span><b>${SDEF[prev].name} → ${SDEF[state].name}</b> · ${reason}</span>`;logEl.prepend(li);while(logEl.children.length>6)logEl.lastChild.remove();
+    diagram.transition(prev,state);}
+  function idle(reason){go('IDLE',reason);st.nextWander=st.t+rand(2.5,5);}
+  function endAntic(){idle('Antic finished');st.nextAntic=st.t+rand(10,16);}
+  const outfit=()=>{const sk=pick(SKINS.filter(s=>s.id!==bot.skin.id));bot.wear(sk);return sk;};
+  const ANTICS={
+    perch(){go('ANTIC','Scheduler: perch on a window');const n=nr();const x=n.x+n.w*rand(.25,.75);
+      walkTo(clamp(x,40,W-40),()=>hopTo(x,n.y,'notes',()=>{bot.setEmotion('curious',2.6);bot.lookTarget={x:-.3,y:.9};say('What are we writing?');
+        later(3.4,()=>hopTo(clamp(st.x+rand(-60,60),40,W-40),ground(),'taskbar',endAntic));}));},
+    spin(){go('ANTIC','Scheduler: spin and get dizzy');bot.play('spin');bot.setEmotion('surprised',1.2);later(1.35,()=>{bot.setEmotion('dizzy',1.8);say('Whoa. Room is spinning.',1.8);later(2,endAntic);});},
+    dance(){go('ANTIC','Scheduler: tiny dance break');bot.play('dance');bot.setEmotion('happy',4.2);say('Tiny dance break.',2);later(4.3,endAntic);},
+    outfit(){go('ANTIC','Scheduler: surprise outfit change');const sk=outfit();later(.8,()=>say(`New look: ${sk.name}!`,2));later(2.2,endAntic);},
+    peek(){go('ANTIC','Scheduler: peek from the screen edge');walkTo(W+8,()=>later(.8,()=>walkTo(W-70,()=>{bot.play('wave');bot.setEmotion('happy',2.2);say('Peekaboo!',2);later(2.4,endAntic);})));}
+  };
+  function pickAntic(){let opts=Object.keys(ANTICS).filter(k=>k!==st.lastAntic);if(st.surface!=='taskbar')opts=['spin','dance','outfit'];const k=pick(opts);st.lastAntic=k;ANTICS[k]();}
+  function wander(){let x;if(st.surface==='taskbar'){do{x=rand(50,W-50);}while(Math.abs(x-st.x)<120&&W>300);}else{const n=nr();x=n.x+n.w*rand(.15,.85);}
+    go('WANDER','Wander timer fired');walkTo(x,()=>idle('Arrived at a new spot'));}
+  function setHush(on){canvas.style.opacity=flags.full?0:on?.45:1;st.scaleT=on?.75:1;bot.baseEmo=on?'sleepy':'neutral';if(bot.emoUntil===Infinity&&!bot.sleeping)bot.emo=bot.baseEmo;}
+  function enterHush(reason){interrupt();go('HUSH',reason);setHush(true);bot.sleeping=false;toTaskbar(W-64);}
+  function resume(reason){interrupt();if(flags.full)return;if(flags.typing)return enterHush('Still typing');if(flags.away)return enterSleep();setHush(false);idle(reason);}
+  function enterSleep(){interrupt();go('SLEEP','No input for 10 min (simulated)');bot.sleeping=true;bot.emoUntil=Infinity;say('Zzz…',1.5);}
+  function enterHidden(){interrupt();go('HIDDEN','Fullscreen app detected');canvas.style.opacity=0;bubble.classList.remove('on');present.hidden=false;}
+  const tTyping=$('#tTyping'),tFull=$('#tFull'),tAway=$('#tAway');
+  tTyping.addEventListener('click',()=>{flags.typing=!flags.typing;tTyping.setAttribute('aria-pressed',flags.typing);if(flags.typing){flags.away=false;tAway.setAttribute('aria-pressed','false');bot.sleeping=false;if(!flags.full)enterHush('Keyboard input in the last 3 s');}else if(!flags.full){setHush(false);resume('No input for 3 s');bot.play('stretch');}});
+  tFull.addEventListener('click',()=>{flags.full=!flags.full;tFull.setAttribute('aria-pressed',flags.full);if(flags.full)enterHidden();else{present.hidden=true;canvas.style.opacity=flags.typing?.45:1;resume('Fullscreen app closed');}});
+  tAway.addEventListener('click',()=>{flags.away=!flags.away;tAway.setAttribute('aria-pressed',flags.away);if(flags.away){flags.typing=false;tTyping.setAttribute('aria-pressed','false');setHush(false);if(!flags.full)enterSleep();}else if(!flags.full){bot.sleeping=false;resume('User returned');bot.play('stretch');bot.setEmotion('happy',2.5);say('Welcome back!');}});
+  const JOKES=['Why did the robot go on vacation? To recharge.','I would tell a UDP joke, but you might not get it.','I asked the cloud for a joke. It was still loading.'];
+  function perform(name){if(flags.full)return;
+    interrupt();bot.sleeping=false;flags.away=false;tAway.setAttribute('aria-pressed','false');
+    canvas.style.opacity=1;st.scaleT=1;bot.baseEmo='neutral';
+    go('PERFORM',`You asked: "${name==='outfit'?'change outfit':name}"`);
+    const done=()=>later(.1,()=>{if(flags.typing){enterHush('Back to quiet: still typing');}else idle('Command finished');});
+    if(name==='outfit'){const sk=outfit();later(.8,()=>say(`Ta-da! ${sk.name}.`,2));later(1.4,done);return;}
+    const D={wave:2.4,dance:4.2,jump:1.1,stretch:2.6};
+    if(name==='joke'){bot.play('laugh',2.4);bot.setEmotion('laugh',2.4);say(pick(JOKES),3.6);later(3.6,done);return;}
+    if(name==='stretch')say('Stretch break: arms up, shoulders back.',2.6);
+    if(name==='wave')say('Hi! Back to work soon.',2);
+    bot.play(name);bot.setEmotion(name==='jump'?'surprised':'happy',D[name]);later(D[name]+.1,done);
+  }
+  document.querySelectorAll('[data-sim]').forEach(b=>b.addEventListener('click',()=>perform(b.dataset.sim)));
+  for(const w of [$('#winSheet'),notes])w.addEventListener('pointerdown',()=>{document.querySelectorAll('.desk .win').forEach(x=>x.classList.remove('focused'));w.classList.add('focused');});
+  const mouse={x:-999,y:-999,in:false};
+  desk.addEventListener('pointermove',e=>{const r=desk.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;mouse.in=true;});
+  desk.addEventListener('pointerleave',()=>{mouse.in=false;});
+  const botH=()=>HF*base*st.scale;
+  desk.addEventListener('click',e=>{if(flags.full)return;const r=desk.getBoundingClientRect();const mx=e.clientX-r.left,my=e.clientY-r.top;const d=Math.hypot(mx-st.x,my-(st.y-botH()/2));
+    if(d<Math.max(36,botH()*.6)){if(st.state==='SLEEP'){flags.away=false;tAway.setAttribute('aria-pressed','false');bot.sleeping=false;resume('Poked awake');bot.play('stretch');bot.setEmotion('happy',2.4);say('I was just resting my eyes.');}
+      else{bot.play('giggle');bot.setEmotion('happy',1.5);say('Hehe, that tickles.',1.6);}}});
+  function resize(){W=desk.clientWidth;H=desk.clientHeight;renderer.setSize(W,H,false);cam.left=0;cam.right=W;cam.top=H;cam.bottom=0;cam.updateProjectionMatrix();base=clamp(H*.17/HF,16,27);
+    if(st.surface==='taskbar'&&!st.hop)st.y=ground();st.x=clamp(st.x,30,W-30);foot.textContent=`${Math.round(HF*base)} px tall · ${(100*(HF*base)*(2.2*base)/(1920*1080)).toFixed(2)}% of a 1080p screen`;}
+  new ResizeObserver(resize).observe(desk);resize();st.y=ground();
+  const SCRIPT='Standup notes\n- Shipped per-pixel hit testing\n- Fix DPI scaling at 150%\n- Blink stays quiet while I type\n- Next: meeting guard (mic in use)\n';
+  let typed='Standup notes\n- ',ti=typed.length,typeAcc=0;
+  const renderNotes=()=>{notesText.textContent=typed;const c=document.createElement('span');c.className='caret';notesText.appendChild(c);};renderNotes();
+  const clock=$('#deskClock');let clockAcc=1;
+  function update(dt){
+    st.t+=dt;
+    if(timers.length){const due=timers.filter(t=>t.at<=st.t);timers=timers.filter(t=>t.at>st.t);for(const t of due)if(t.my===seq)t.fn();}
+    if(!V.visible&&!flags.typing)return;
+    clockAcc+=dt;if(clockAcc>1){clockAcc=0;clock.textContent=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});}
+    if(flags.typing){typeAcc+=dt*14;while(typeAcc>1){typeAcc--;typed+=SCRIPT[ti%SCRIPT.length];ti++;if(typed.length>220)typed=typed.slice(typed.indexOf('\n')+1);}renderNotes();}
+    if(flags.full)return;
+    if(st.state==='IDLE'&&!REDUCE){if(st.t>st.nextAntic)pickAntic();else if(st.t>st.nextWander)wander();}
+    const cy=st.y-botH()*.55;const d=mouse.in?Math.hypot(mouse.x-st.x,mouse.y-cy):1e9;
+    st.avoidCD-=dt;
+    if(d<220&&st.state!=='SLEEP'){bot.lookTarget={x:clamp((mouse.x-st.x)/160,-1,1),y:clamp((mouse.y-cy)/160,-1,1)};st.lookAt=st.t+1.5;}
+    else if(st.t>st.lookAt){st.lookAt=st.t+rand(1.5,3.5);bot.lookTarget={x:rand(-.8,.8),y:rand(-.3,.6)};}
+    if(d<70&&(st.state==='IDLE'||st.state==='WANDER')&&st.surface==='taskbar'&&!st.hop&&st.avoidCD<=0){
+      const dir=mouse.x<st.x?1:-1;let nx=clamp(st.x+dir*120,40,W-40);if(Math.abs(nx-st.x)<40)nx=clamp(st.x-dir*120,40,W-40);
+      interrupt();bot.setEmotion('surprised',.9);go('WANDER','Cursor came close: stepping aside');walkTo(nx,()=>idle('Gave the cursor room'));st.avoidCD=1.6;}
+    ring.classList.toggle('on',d<130&&!st.hop&&st.state!=='HIDDEN');
+    if(st.hop){const h=st.hop;h.t+=dt/h.dur;const p=clamp(h.t,0,1);st.x=lerp(h.x0,h.x1,p);st.y=lerp(h.y0,h.y1,p)-Math.sin(p*Math.PI)*(50+Math.abs(h.y1-h.y0)*.25);bot.walk=0;
+      st.face=Math.sign(h.x1-h.x0)*.6;if(p>=1){st.hop=null;st.y=h.y1;bot.play('giggle',.5);h.then&&h.then();}}
+    else if(st.target){const dx=st.target.x-st.x,step=(st.state==='HUSH'?70:95)*dt;
+      if(Math.abs(dx)<=step){st.x=st.target.x;const th=st.target.then;st.target=null;bot.walk=0;st.face=0;th&&th();}
+      else{st.x+=Math.sign(dx)*step;bot.walk=1;st.face=Math.sign(dx)*.95;}}
+    else{bot.walk=0;st.face=0;}
+    if(st.surface==='notes'&&!st.hop){const n=nr();st.y=n.y;st.x=clamp(st.x,n.x+20,n.x+n.w-20);}
+    st.scale=lerp(st.scale,st.scaleT,Math.min(1,dt*5));
+    bot.group.rotation.y=lerp(bot.group.rotation.y,st.face,Math.min(1,dt*8));
+    bot.group.scale.setScalar(base*st.scale);bot.group.position.set(st.x,H-st.y,0);
+    bot.update(dt);
+    if(!V.visible)return;
+    renderer.render(scene,cam);
+    ring.style.transform=`translate(${st.x}px,${cy}px)`;
+    if(bubble.classList.contains('on')){if(st.t>st.bubbleUntil)bubble.classList.remove('on');const bw=bubble.offsetWidth,bh=bubble.offsetHeight;
+      bubble.style.transform=`translate(${clamp(st.x-24,6,W-bw-6)}px,${clamp(st.y-botH()-bh-8,6,H-bh-6)}px)`;}
+  }
+  return {update};
+})();
+loops.push(sim.update);
+
+const retheme=()=>{diagram.applyTheme();arch.applyTheme();};
+const mq=matchMedia('(prefers-color-scheme: dark)');if(mq.addEventListener)mq.addEventListener('change',retheme);
+new MutationObserver(retheme).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+let last=performance.now();
+function frame(now){const dt=Math.min(.05,(now-last)/1000);last=now;for(const f of loops){try{f(dt);}catch(err){console.error(err);}}requestAnimationFrame(frame);}
+requestAnimationFrame(frame);
+})();
+</script>

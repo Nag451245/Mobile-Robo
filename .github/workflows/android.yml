@@ -1,0 +1,70 @@
+name: Android live wallpaper (APK)
+
+on:
+  push:
+    branches: [main]
+    paths: ['blink-android/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: latest-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      # Keeps the same signing key between builds, so a new APK installs over the old one.
+      - name: Reuse the debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: blink-debug-keystore-v1
+
+      - name: Build the APK
+        working-directory: blink-android
+        run: |
+          set -o pipefail
+          gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
+
+      - name: Show compile errors
+        if: failure()
+        working-directory: blink-android
+        run: |
+          grep -E "error:|e: |FAILURE|What went wrong" -A3 build.log | head -n 80 | while IFS= read -r line; do echo "::error::$line"; done
+
+      - name: Name the APK
+        run: cp blink-android/app/build/outputs/apk/debug/app-debug.apk Blink-wallpaper.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Blink-wallpaper-apk
+          path: Blink-wallpaper.apk
+
+      - name: Publish to the "Latest build" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest build
+          prerelease: true
+          files: Blink-wallpaper.apk
+          body: |
+            Built automatically from the main branch.
+
+            **Phone (Android 8+):** open this page on your phone, tap `Blink-wallpaper.apk`, allow "Install unknown apps" for your browser when asked, then open Blink and tap "Set Blink as my wallpaper".
+
+            **Windows:** download `Blink-portable-win64.zip`, unzip anywhere and run `Blink.exe`. No installer or admin rights needed.

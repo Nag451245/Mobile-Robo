@@ -1,0 +1,13 @@
+# dependencies and build output
+node_modules/
+dist/
+.gradle/
+build/
+local.properties
+*.apk
+*.keystore
+
+# local tools and runtime data
+.claude/
+blink-desktop/data/
+*.log

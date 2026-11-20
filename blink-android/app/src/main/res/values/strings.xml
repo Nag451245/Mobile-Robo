@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Blink</string>
+    <string name="wp_desc">Blink, a cute robot that lives on your home and lock screen and reacts when you unlock, charge, shake or swipe.</string>
+    <string name="notif_label">Blink mail carrier</string>
+</resources>

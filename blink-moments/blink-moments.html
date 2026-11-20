@@ -1,0 +1,679 @@
+<title>Blink Phone Moments</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+/* Layout: a menu, not a report. Sticky mock phone on the left plays each idea; the right column is the menu of moments,
+   grouped by when they happen; a fixed tray at the bottom totals the order. */
+:root{
+  --bg:#F5F0F8; --surface:#FFFFFF; --surface-2:#EFE8F5; --ink:#211832; --muted:#6A5F80; --line:#E0D6EB; --line-strong:#B6A8C9;
+  --accent:#E2468C; --accent-ink:#A11F5C; --accent-soft:#FFE1EF;
+  --lock:#7A5FC8; --home:#1E9C8A; --both:#C77700; --future:#4C78D6; --perm:#B9441F;
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#120E1A; --surface:#1B1627; --surface-2:#251E34; --ink:#EEE8F7; --muted:#A79DBB; --line:#332A47; --line-strong:#56496E;
+  --accent:#FF73B4; --accent-ink:#FFA8D2; --accent-soft:#3D1430;
+  --lock:#A68BF0; --home:#35C2AC; --both:#F0A63A; --future:#7FA6F5; --perm:#F08A6A; color-scheme:dark; } }
+:root[data-theme="dark"]{
+  --bg:#120E1A; --surface:#1B1627; --surface-2:#251E34; --ink:#EEE8F7; --muted:#A79DBB; --line:#332A47; --line-strong:#56496E;
+  --accent:#FF73B4; --accent-ink:#FFA8D2; --accent-soft:#3D1430;
+  --lock:#A68BF0; --home:#35C2AC; --both:#F0A63A; --future:#7FA6F5; --perm:#F08A6A; color-scheme:dark; }
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15.5px/1.55 var(--f-body)}
+button,input,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 140px}
+h1,h2,h3{font-family:var(--f-display);margin:0;line-height:1.1;text-wrap:balance}
+h1{font-size:clamp(2rem,4.6vw,3.2rem);font-weight:800;letter-spacing:-.02em}
+.lede{max-width:62ch;margin:12px 0 0;color:var(--muted);font-size:1.05rem}
+.layout{display:grid;grid-template-columns:340px minmax(0,1fr);gap:36px;margin-top:28px;align-items:start}
+.phone-col{position:sticky;top:max(16px,env(safe-area-inset-top,0px));display:grid;gap:12px;justify-items:center}
+
+/* phone */
+.phone{position:relative;width:300px;height:620px;border-radius:44px;background:#0E0B14;padding:12px;box-shadow:0 24px 50px rgba(30,15,50,.28),inset 0 0 0 2px #2B2438;transition:transform .35s}
+.phone.shake{animation:shake .5s linear 2}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-10px) rotate(-2deg)}40%{transform:translateX(10px) rotate(2deg)}60%{transform:translateX(-7px)}80%{transform:translateX(7px)}}
+.screen{position:relative;width:100%;height:100%;border-radius:34px;overflow:hidden;background:#1C1530}
+.notch{position:absolute;z-index:9;top:10px;left:50%;width:84px;height:22px;margin-left:-42px;border-radius:12px;background:#0E0B14}
+.wall{position:absolute;inset:0;transition:opacity .45s,filter .45s;background:radial-gradient(circle at 30% 20%,#FFC1DD,transparent 55%),radial-gradient(circle at 80% 80%,#B9A6FF,transparent 55%),linear-gradient(160deg,#FFD9EA,#D9CCFF)}
+.screen.dim .wall{filter:brightness(.55) saturate(.7)}
+.lockui{position:absolute;inset:0;z-index:2;color:#2A1D40;text-align:center;padding-top:64px;transition:transform .5s cubic-bezier(.3,.8,.2,1),opacity .4s}
+.lockui .clock{font:800 64px/1 var(--f-display);letter-spacing:-.03em}
+.lockui .date{font-weight:700;font-size:14px;opacity:.75;margin-top:6px}
+.lockui .swipe{position:absolute;left:0;right:0;bottom:26px;font-size:12px;font-weight:700;opacity:.6}
+.homeui{position:absolute;inset:0;z-index:2;opacity:0;transition:opacity .45s;padding:56px 18px 0}
+.pages{display:flex;width:200%;transition:transform .7s cubic-bezier(.3,.8,.2,1)}
+.page{width:50%;display:grid;grid-template-columns:repeat(4,1fr);gap:16px 10px;align-content:start;padding:0 2px}
+.app{display:grid;justify-items:center;gap:4px;font-size:9.5px;font-weight:700;color:#2A1D40}
+.app i{width:44px;height:44px;border-radius:13px;display:block;box-shadow:0 3px 6px rgba(40,20,70,.15)}
+.dockbar{position:absolute;left:14px;right:14px;bottom:16px;height:64px;border-radius:22px;background:rgba(255,255,255,.45);display:flex;justify-content:space-around;align-items:center}
+.dockbar i{width:40px;height:40px;border-radius:12px;display:block}
+.screen.home .lockui{transform:translateY(-110%);opacity:0}
+.screen.home .homeui{opacity:1}
+.screen.swiped .pages{transform:translateX(-50%)}
+.off{position:absolute;inset:0;z-index:8;background:#000;opacity:0;pointer-events:none;transition:opacity .5s}
+.screen.dark .off{opacity:1}
+#demoCanvas{position:absolute;inset:0;width:100%;height:100%;z-index:5;display:block}
+.dbubble{position:absolute;z-index:7;left:0;top:0;max-width:200px;background:#fff;color:#2A1D40;border:2px solid #F3C6DC;border-radius:14px;padding:6px 10px;font-size:12.5px;line-height:1.3;box-shadow:0 6px 14px rgba(40,20,70,.2);opacity:0;transition:opacity .2s;pointer-events:none}
+.dbubble.on{opacity:1}
+.prop{position:absolute;z-index:6;left:0;top:0;width:40px;height:40px;pointer-events:none;transition:transform .9s cubic-bezier(.3,.8,.2,1),opacity .4s}
+.prop svg{width:100%;height:100%;display:block;overflow:visible}
+.prop.pop{animation:pop .9s ease-out both}
+@keyframes pop{0%{opacity:0;scale:.3}30%{opacity:1;scale:1.15}100%{opacity:1;scale:1}}
+.prop.float{animation:floatup 2.2s ease-out both}
+@keyframes floatup{0%{opacity:0;translate:0 10px}20%{opacity:1}100%{opacity:0;translate:0 -70px}}
+.prop.sign{width:auto;height:auto;background:#FFF6D6;border:2px solid #E3B95A;color:#5A3A00;border-radius:8px;padding:4px 8px;font:800 13px var(--f-display);white-space:nowrap}
+.cable{position:absolute;z-index:4;width:4px;background:#3A3150;border-radius:2px;bottom:0;transform-origin:bottom;transition:height .8s}
+.demo-label{font-size:.82rem;color:var(--muted);text-align:center;min-height:1.3em}
+.demo-row{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;max-width:320px}
+.mini{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 10px;font-size:.8rem;cursor:pointer}
+.mini:hover{border-color:var(--accent);color:var(--accent-ink)}
+
+/* menu */
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.fchip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 13px;font-size:.88rem;font-weight:700;cursor:pointer}
+.fchip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.cat{margin-top:34px}
+.cat-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:4px}
+.cat-h h2{font-size:1.5rem}
+.cat-h .count{font-size:.82rem;color:var(--muted)}
+.cat p.sub{margin:0 0 12px;color:var(--muted);font-size:.93rem}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.idea{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 14px 12px;display:grid;gap:8px;align-content:start;min-width:0;transition:border-color .15s,background .15s}
+.idea.on{border-color:var(--accent);background:linear-gradient(0deg,var(--surface),var(--surface)),var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+.idea[hidden]{display:none}
+.pick{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.pick input{width:20px;height:20px;margin:2px 0 0;accent-color:var(--accent);flex:none;cursor:pointer}
+.pick b{font-family:var(--f-display);font-size:1.06rem;line-height:1.2}
+.idea p{margin:0;font-size:.92rem;color:var(--muted)}
+.tags{display:flex;flex-wrap:wrap;gap:5px}
+.tag{font-size:.72rem;font-weight:700;border-radius:6px;padding:2px 7px;background:var(--surface-2);color:var(--ink);white-space:nowrap}
+.tag.lock{color:var(--lock);background:color-mix(in srgb,var(--lock) 14%,transparent)}
+.tag.home{color:var(--home);background:color-mix(in srgb,var(--home) 14%,transparent)}
+.tag.both{color:var(--both);background:color-mix(in srgb,var(--both) 14%,transparent)}
+.tag.perm{color:var(--perm);background:color-mix(in srgb,var(--perm) 13%,transparent)}
+.tag.fut{color:var(--future);background:color-mix(in srgb,var(--future) 14%,transparent)}
+.tag.star{color:var(--accent-ink);background:var(--accent-soft)}
+.idea-foot{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ios{font-size:.75rem;color:var(--muted)}
+.prev{border:1px solid var(--line-strong);background:transparent;border-radius:999px;padding:3px 11px;font-size:.8rem;font-weight:700;cursor:pointer;white-space:nowrap}
+.prev:hover{border-color:var(--accent);color:var(--accent-ink)}
+.own{margin-top:34px;background:var(--surface);border:1px dashed var(--line-strong);border-radius:16px;padding:16px}
+.own form{display:grid;gap:8px;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto}
+.own input,.own textarea{border:1px solid var(--line-strong);background:var(--bg);border-radius:10px;padding:9px 12px;min-width:0}
+.own textarea{width:100%;min-height:74px;resize:vertical;margin-top:10px}
+.own button{border:0;background:var(--accent);color:#fff;border-radius:10px;padding:0 16px;font-weight:800;cursor:pointer}
+.own .x{background:transparent;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:2px 8px;font-size:.78rem}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.82rem;color:var(--muted);margin-top:14px}
+.empty{color:var(--muted);font-size:.9rem}
+
+/* tray */
+.tray{position:fixed;left:0;right:0;bottom:0;z-index:20;background:color-mix(in srgb,var(--surface) 92%,transparent);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);border-top:1px solid var(--line)}
+.tray-in{max-width:1180px;margin:0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;padding-top:12px;padding-bottom:max(12px,env(safe-area-inset-bottom,0px));padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.tray b{font-family:var(--f-display);font-size:1.25rem}
+.tray .stat{font-size:.86rem;color:var(--muted);flex:1 1 260px;min-width:0}
+.tray .grow{display:none}
+.tbtn{border:1px solid var(--line-strong);background:var(--surface);border-radius:10px;padding:8px 13px;font-weight:700;font-size:.88rem;cursor:pointer}
+.tbtn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.save{font-size:.8rem;color:var(--muted);min-width:9em;text-align:right}
+
+@media (max-width:980px){
+  .layout{grid-template-columns:1fr}
+  .phone-col{position:static}
+}
+@media (max-width:640px){
+  .grid{grid-template-columns:1fr}
+  .own form{grid-template-columns:1fr}
+  .own button{padding:10px}
+  .phone{transform:scale(.9);transform-origin:top center;margin-bottom:-60px}
+}
+@media (prefers-reduced-motion: reduce){ .phone.shake{animation:none} .prop.float,.prop.pop{animation:none} }
+</style>
+
+<div class="wrap">
+  <h1>Blink Phone Moments</h1>
+  <p class="lede">Everything Blink could do on your phone's lock screen and home screen, sorted by when it happens. Tick the ones you want. Press Preview to watch Blink act it out on the phone. Your picks save automatically, and I'll build the Android app from them.</p>
+
+  <div class="layout">
+    <aside class="phone-col" aria-label="Preview phone">
+      <div class="phone" id="phone">
+        <div class="screen" id="screen">
+          <div class="wall"></div>
+          <div class="lockui"><div class="clock" id="clock">9:41</div><div class="date" id="date">Friday, 20 November</div><div class="swipe">Swipe up to unlock</div></div>
+          <div class="homeui"><div class="pages" id="pages"></div><div class="dockbar"><i style="background:#7FD8C8"></i><i style="background:#FFD447"></i><i style="background:#FF9EC7"></i><i style="background:#9EB7FF"></i></div></div>
+          <canvas id="demoCanvas" aria-hidden="true"></canvas>
+          <div id="props"></div>
+          <div class="dbubble" id="dbubble"></div>
+          <div class="off"></div>
+          <div class="notch"></div>
+        </div>
+      </div>
+      <div class="demo-label" id="demoLabel">Press Preview on any idea</div>
+      <div class="demo-row" id="quickDemos"></div>
+    </aside>
+
+    <main>
+      <div class="filters" role="group" aria-label="Filter ideas" id="filters"></div>
+      <div class="legend"><span><span class="tag lock">Lock screen</span> shows while locked</span><span><span class="tag home">Home screen</span> shows behind your apps</span><span><span class="tag both">Lock + Home</span> both</span><span><span class="tag perm">Permission</span> you grant once</span><span><span class="tag fut">Future</span> bigger dreams</span></div>
+      <div id="cats"></div>
+
+      <section class="own" aria-labelledby="ownH">
+        <h2 id="ownH" style="font-size:1.35rem">Your own ideas</h2>
+        <p class="empty" style="margin:4px 0 12px">Anything goes. Describe the moment and what Blink does.</p>
+        <form id="ownForm" autocomplete="off">
+          <input id="ownTitle" placeholder="Name, e.g. Rain dance" aria-label="Idea name" maxlength="60" required>
+          <input id="ownDesc" placeholder="What happens, e.g. when it rains Blink splashes in puddles" aria-label="What happens" maxlength="220">
+          <button type="submit">Add</button>
+        </form>
+        <div class="grid" id="ownList" style="margin-top:12px"></div>
+        <textarea id="notes" placeholder="Anything else? For example: make Blink calmer at work hours, or louder on weekends." aria-label="Notes for the build"></textarea>
+      </section>
+    </main>
+  </div>
+</div>
+
+<div class="tray" role="region" aria-label="Your picks">
+  <div class="tray-in">
+    <div><b id="pickCount">0 picked</b></div>
+    <div class="stat" id="pickStats">Nothing picked yet. Starter pack is a good first version.</div>
+    <div class="grow"></div>
+    <span class="save" id="saveState"></span>
+    <button class="tbtn" id="clearBtn" type="button">Clear</button>
+    <button class="tbtn primary" id="starterBtn" type="button">Add starter pack</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// Blink character: skins, procedural face, 3D rig and animations. Shared globals for app.js.
+"use strict";
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const smooth=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
+const easeInOut=t=>t<.5?2*t*t:1-Math.pow(-2*t+2,2)/2;
+const backOut=x=>{const c1=1.70158,c3=c1+1;return 1+c3*Math.pow(x-1,3)+c1*Math.pow(x-1,2);};
+const REDUCE=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rand=(a,b)=>a+Math.random()*(b-a);
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+
+const SKINS=[
+  {id:'bubblegum',name:'Bubblegum',shell:'#FFB3D4',belly:'#FFF0F7',trim:'#56C9BA',accent:'#FFD447',inner:'#FF86B8',bow:'#FF5FA2',eye:'#7DF9FF',bg:['#3A1652','#170829'],blush:'#FF7AB6',mouth:'smile',acc:['antenna','discs','bow'],kw:['pink','bubblegum','bubble','robot']},
+  {id:'sunny',name:'Sunny',shell:'#FFD84A',belly:'#FFF6CF',trim:'#3FA2F7',accent:'#FF6F59',inner:'#FF9F80',eye:'#9BFFF0',bg:['#0E2B4D','#061629'],blush:'#FF8A65',mouth:'smile',acc:['antenna','discs'],kw:['sunny','yellow','sun']},
+  {id:'kitty',name:'Mint Kitty',shell:'#8FE3C8',belly:'#F0FFF8',trim:'#2E8C7C',accent:'#FF9EC7',inner:'#FFB0D0',eye:'#FFF38A',bg:['#0F3838','#051E1E'],blush:'#FF8FC0',mouth:'cat',acc:['catEars','tail'],kw:['cat','kitty','kitten','mint']},
+  {id:'bunny',name:'Lavender Bunny',shell:'#C9B5FF',belly:'#FFFFFF',trim:'#7B5CE0',accent:'#FFB3D9',inner:'#FFC2E0',eye:'#FFD6F5',bg:['#24154A','#0E0826'],blush:'#FF9ACB',mouth:'cat',acc:['bunnyEars'],kw:['bunny','rabbit','lavender','purple']},
+  {id:'panda',name:'Panda',shell:'#FAFAFA',belly:'#FFFFFF',trim:'#2A2A33',limb:'#2A2A33',accent:'#7ED957',inner:'#4A4A55',leaf:'#7ED957',eye:'#B8F3FF',bg:['#1A1D24','#0A0B0F'],blush:'#FF9EB5',mouth:'smile',acc:['bearEars','leaf'],kw:['panda','bear']},
+  {id:'sprout',name:'Sprout',shell:'#FFEFD0',belly:'#FFFFFF',trim:'#3E9B6B',accent:'#7BD88F',inner:'#FFB38A',leaf:'#6CD47E',eye:'#B9FF9C',bg:['#123222','#06180F'],blush:'#FF9F8A',mouth:'smile',acc:['leaf','discs'],kw:['sprout','plant','leaf','green']},
+  {id:'classic',name:'Classic',shell:'#F2F4F7',belly:'#FFFFFF',trim:'#2A3544',accent:'#FFB020',inner:'#FFB020',eye:'#6FF3FF',bg:['#0F1D2F','#050B14'],blush:'#FF7AB0',mouth:'smile',acc:['antenna','discs'],kw:['classic','white','original']},
+  {id:'snow',name:'Snow Buddy',shell:'#DDF1FF',belly:'#FFFFFF',trim:'#5C8FD6',accent:'#FF5A6E',inner:'#FF5A6E',hat:'#FF4D64',eye:'#A8F0FF',bg:['#102A4A','#061328'],blush:'#FF8FA8',mouth:'smile',acc:['beanie'],kw:['snow','winter','christmas','holiday','beanie','scarf']},
+  {id:'nightcap',name:'Sleepy Cap',shell:'#A9B8FF',belly:'#E8ECFF',trim:'#3D4B9E',accent:'#FFE27A',inner:'#FFE27A',hat:'#4B5BD6',eye:'#FFE9A8',bg:['#121640','#070820'],blush:'#FF9AC2',mouth:'cat',acc:['nightcap'],kw:['night','nightcap','pajama','pyjama','cap']}
+];
+const SKIN_BY={};SKINS.forEach(s=>SKIN_BY[s.id]=s);
+
+function rrect(ctx,x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
+function lidClip(ctx,cx,cy,r,side,yi,yo){const xi=cx-side*r,xo=cx+side*r,s=(yo-yi)/(xo-xi),xl=cx-2.2*r,xr=cx+2.2*r;ctx.beginPath();ctx.moveTo(xl,yi+s*(xl-xi));ctx.lineTo(xr,yi+s*(xr-xi));ctx.lineTo(xr,cy+3*r);ctx.lineTo(xl,cy+3*r);ctx.closePath();ctx.clip();}
+function heart(ctx,cx,cy,s){ctx.beginPath();ctx.moveTo(cx,cy+.7*s);ctx.bezierCurveTo(cx-1.15*s,cy,cx-.6*s,cy-.95*s,cx,cy-.35*s);ctx.bezierCurveTo(cx+.6*s,cy-.95*s,cx+1.15*s,cy,cx,cy+.7*s);ctx.fill();}
+
+function drawFace(ctx,W,H,emo,open,lx,ly,t,sk){
+  sk=sk||SKINS[0];
+  const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,sk.bg[0]);g.addColorStop(1,sk.bg[1]);ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(255,255,255,0.035)';for(let y=0;y<H;y+=Math.max(3,H/42))ctx.fillRect(0,y,W,Math.max(1,H/128));
+  const col=emo==='angry'?'#FF7A5C':emo==='love'?'#FF6FAE':sk.eye;
+  const r=H*.25,ox=lx*r*.45,oy=ly*r*.32,ey=H*.43;
+  const strong=['happy','love','wink','laugh'].includes(emo);
+  ctx.save();ctx.globalAlpha=strong?.85:.45;ctx.fillStyle=sk.blush;ctx.shadowColor=sk.blush;ctx.shadowBlur=H*.06;
+  for(const s of [-1,1]){ctx.beginPath();ctx.ellipse(W*.5+s*W*.31+ox*.5,H*.7+oy*.4,W*.06,H*.055,0,0,7);ctx.fill();}ctx.restore();
+  ctx.save();ctx.shadowColor=col;ctx.shadowBlur=H*.1;ctx.fillStyle=col;ctx.strokeStyle=col;ctx.lineCap='round';ctx.lineJoin='round';
+  for(const side of [-1,1]){
+    const cx=W*.5+side*W*.165+ox,cy=ey+oy;
+    ctx.save();
+    let e=emo;if(e==='wink')e=side<0?'happy':'neutral';
+    const blob=(w,h)=>{h=Math.max(h,r*.12);rrect(ctx,cx-w/2,cy-h/2,w,h,Math.min(w,h)/2);ctx.fill();};
+    const shine=(w,h)=>{if(h<r*.9)return;ctx.save();ctx.shadowBlur=0;ctx.fillStyle='rgba(255,255,255,.95)';ctx.beginPath();ctx.arc(cx-w*.2,cy-h*.22,r*.2,0,7);ctx.fill();ctx.beginPath();ctx.arc(cx+w*.17,cy+h*.2,r*.09,0,7);ctx.fill();ctx.restore();};
+    switch(e){
+      case 'happy':case 'laugh':ctx.lineWidth=r*.34;ctx.beginPath();ctx.arc(cx,cy+r*.35,r*.6,Math.PI*1.12,Math.PI*1.88);ctx.stroke();break;
+      case 'sleep':ctx.lineWidth=r*.24;ctx.beginPath();ctx.arc(cx,cy-r*.3,r*.58,Math.PI*.18,Math.PI*.82);ctx.stroke();break;
+      case 'sleepy':blob(r*1.5,r*2*open*.3);break;
+      case 'sad':{lidClip(ctx,cx,cy,r,side,cy-r*.95,cy-r*.15);const w=r*1.5,h=r*1.9*open;blob(w,h);shine(w,h*1.3);break;}
+      case 'angry':{lidClip(ctx,cx,cy,r,side,cy-r*.05,cy-r*.9);blob(r*1.55,r*1.8*open);break;}
+      case 'surprised':{const k=1.1+Math.sin(t*9)*.04;ctx.lineWidth=r*.26;ctx.beginPath();ctx.arc(cx,cy,r*k*open+.01,0,7);ctx.stroke();ctx.beginPath();ctx.arc(cx,cy,r*.34,0,7);ctx.fill();break;}
+      case 'love':heart(ctx,cx,cy,r*1.15*(1+.08*Math.sin(t*8)));break;
+      case 'dizzy':{ctx.lineWidth=r*.16;ctx.beginPath();const rot=t*6*side;for(let i=0;i<=64;i++){const a=i/64*2.6*Math.PI*2,rr=i/64*r*.95,x=cx+Math.cos(a+rot)*rr,y=cy+Math.sin(a+rot)*rr;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.stroke();break;}
+      case 'curious':{const s=side>0?1.2:.86,w=r*1.5*s,h=r*2*open*s;blob(w,h);shine(w,h);break;}
+      default:{const w=r*1.5,h=r*2*open;blob(w,h);shine(w,h);}
+    }
+    ctx.restore();
+  }
+  const mx=W*.5+ox*.6,my=H*.76+oy*.4,m=H*.055;
+  ctx.lineWidth=H*.028;ctx.shadowBlur=H*.04;ctx.beginPath();
+  const catW=()=>{ctx.beginPath();ctx.arc(mx-m*.48,my-m*.25,m*.48,0,Math.PI);ctx.arc(mx+m*.48,my-m*.25,m*.48,0,Math.PI);ctx.stroke();};
+  switch(emo){
+    case 'happy':case 'laugh':case 'wink':{const k=emo==='laugh'?1.25+Math.abs(Math.sin(t*14))*.25:1.05;ctx.beginPath();ctx.moveTo(mx-m*k,my-m*.4);ctx.arc(mx,my-m*.4,m*k,0,Math.PI);ctx.closePath();ctx.fill();ctx.shadowBlur=0;ctx.fillStyle='#FF8FB1';ctx.beginPath();ctx.ellipse(mx,my+m*.32*k,m*.5*k,m*.24*k,0,0,7);ctx.fill();break;}
+    case 'sad':ctx.arc(mx,my+m*.85,m*.85,Math.PI*1.2,Math.PI*1.8);ctx.stroke();break;
+    case 'surprised':ctx.ellipse(mx,my,m*.5,m*.65,0,0,7);ctx.stroke();break;
+    case 'angry':ctx.moveTo(mx-m,my);ctx.lineTo(mx-m*.5,my-m*.35);ctx.lineTo(mx,my);ctx.lineTo(mx+m*.5,my-m*.35);ctx.lineTo(mx+m,my);ctx.stroke();break;
+    case 'dizzy':for(let i=0;i<=20;i++){const x=mx-m*1.2+i/20*m*2.4,y=my+Math.sin(i/20*Math.PI*4+t*6)*m*.25;i?ctx.lineTo(x,y):ctx.moveTo(x,y);}ctx.stroke();break;
+    case 'sleep':ctx.arc(mx,my,m*.28*(1+.2*Math.sin(t*1.5)),0,7);ctx.fill();break;
+    case 'sleepy':ctx.moveTo(mx-m*.4,my);ctx.lineTo(mx+m*.4,my);ctx.stroke();break;
+    case 'love':catW();break;
+    default:if(sk.mouth==='cat')catW();else{ctx.arc(mx,my-m*.65,m*.85,Math.PI*.2,Math.PI*.8);ctx.stroke();}
+  }
+  ctx.restore();
+  ctx.fillStyle=col;ctx.textAlign='center';ctx.textBaseline='middle';
+  if(emo==='sad'){const p=(t*.7)%1;ctx.globalAlpha=1-p;ctx.fillStyle='#8FDCFF';ctx.beginPath();ctx.arc(W*.335+ox+W*.04,H*.62+p*H*.3,H*.035,0,7);ctx.fill();ctx.globalAlpha=1;}
+  if(emo==='sleep'){ctx.font=`700 ${H*.15}px "Segoe UI",sans-serif`;for(let i=0;i<3;i++){const p=(t*.35+i/3)%1;ctx.globalAlpha=Math.sin(p*Math.PI);ctx.fillText('z',W*.82+p*W*.08,H*.55-p*H*.42);}ctx.globalAlpha=1;}
+  if(emo==='curious'){ctx.font=`700 ${H*.22}px "Segoe UI",sans-serif`;ctx.fillText('?',W*.9,H*.28+Math.sin(t*3)*H*.03);}
+  if(emo==='surprised'){ctx.font=`800 ${H*.22}px "Segoe UI",sans-serif`;ctx.fillText('!',W*.9,H*.26);}
+  if(emo==='love'){ctx.fillStyle='#FF8FC0';for(let i=0;i<2;i++){const p=(t*.4+i/2)%1;ctx.globalAlpha=Math.sin(p*Math.PI);heart(ctx,W*(.12+i*.76),H*.5-p*H*.35,H*.05);}ctx.globalAlpha=1;}
+  if(emo==='angry'){ctx.save();ctx.strokeStyle=col;ctx.lineWidth=H*.025;ctx.translate(W*.88,H*.2);for(let i=0;i<4;i++){ctx.rotate(Math.PI/2);ctx.beginPath();ctx.moveTo(H*.02,H*.02);ctx.quadraticCurveTo(H*.07,H*.02,H*.07,H*.07);ctx.stroke();}ctx.restore();}
+}
+
+let PG=null;
+class Bot{
+  constructor(opts={}){
+    if(!PG)PG=[new THREE.BoxGeometry(.1,.1,.1),new THREE.OctahedronGeometry(.08),new THREE.SphereGeometry(.06,8,6)];
+    const g=new THREE.Group(),root=new THREE.Group();g.add(root);
+    const std=(r=.42)=>{const m=new THREE.MeshStandardMaterial({color:'#ffffff',roughness:r,metalness:.03});m.userData.shared=true;return m;};
+    const M=this.M={shell:std(.38),belly:std(.5),trim:std(.45),limb:std(.38),inner:std(.5),glow:std(.3),heart:new THREE.MeshBasicMaterial({color:'#ff7ab0'})};
+    M.glow.emissiveIntensity=.45;M.heart.userData.shared=true;
+    const sph=(r,w=32,h=20)=>new THREE.SphereGeometry(r,w,h);
+    this.feet=[];
+    for(const s of [-1,1]){const f=new THREE.Mesh(sph(.2,24,14),M.trim);f.scale.set(1,.6,1.3);f.position.set(s*.26,.11,.06);root.add(f);this.feet.push(f);}
+    const body=new THREE.Group();body.position.y=.72;root.add(body);
+    const torso=new THREE.Mesh(sph(.55,40,28),M.shell);torso.scale.set(1,.92,.9);body.add(torso);
+    const belly=new THREE.Mesh(sph(.36,32,20),M.belly);belly.scale.set(1,1.05,.35);belly.position.set(0,-.04,.4);body.add(belly);
+    const hs=new THREE.Shape();hs.moveTo(0,-.9);hs.bezierCurveTo(-1.4,0,-.7,1.1,0,.45);hs.bezierCurveTo(.7,1.1,1.4,0,0,-.9);
+    const heartM=new THREE.Mesh(new THREE.ShapeGeometry(hs,16),M.heart);heartM.position.set(0,-.02,.535);heartM.scale.setScalar(.12);body.add(heartM);
+    const headPivot=new THREE.Group();headPivot.position.y=.5;body.add(headPivot);
+    const head=new THREE.Mesh(sph(.82,48,32),M.shell);head.scale.set(1.2,.95,1);head.position.y=.62;headPivot.add(head);
+    const bezel=new THREE.Mesh(new THREE.SphereGeometry(.828,48,24,Math.PI/2-1.0,2.0,Math.PI/2-.68,1.36),M.trim);head.add(bezel);
+    this.fw=opts.faceW||512;this.fh=this.fw/2;
+    const fc=document.createElement('canvas');fc.width=this.fw;fc.height=this.fh;
+    this.fx=fc.getContext('2d');this.tex=new THREE.CanvasTexture(fc);this.tex.anisotropy=4;
+    const screen=new THREE.Mesh(new THREE.SphereGeometry(.836,48,24,Math.PI/2-.93,1.86,Math.PI/2-.6,1.2),new THREE.MeshBasicMaterial({map:this.tex}));head.add(screen);
+    const mkArm=s=>{const p=new THREE.Group();p.position.set(s*.5,.06,0);body.add(p);
+      p.add(new THREE.Mesh(sph(.11,20,14),M.limb));
+      const a=new THREE.Mesh(new THREE.CylinderGeometry(.09,.08,.24,16),M.limb);a.position.y=-.14;p.add(a);
+      const h=new THREE.Mesh(sph(.13,20,14),M.trim);h.position.y=-.3;p.add(h);return p;};
+    this.armL=mkArm(-1);this.armR=mkArm(1);
+    Object.assign(this,{group:g,root,body,headPivot,head,heartM});
+    this.accParts=[];this.accAnims=[];this.parts=[];
+    this.t=Math.random()*10;this.action=null;this.aT=0;this.aDur=0;this.emo='neutral';this.baseEmo='neutral';this.emoUntil=Infinity;
+    this.blinkNext=this.t+2;this.blinkT=-1;this.look={x:0,y:0};this.lookTarget={x:0,y:0};this.walk=0;this.fly=0;this.sleeping=false;this.onActionEnd=null;this.pendingSkin=null;
+    this.cur={rootY:0,rootRotY:0,sx:1,sy:1,bodyY:.72,headX:0,headY:0,headZ:0,armL:-.2,armR:.2,armLx:0,armRx:0};
+    this.applySkin(typeof opts.skin==='string'?(SKIN_BY[opts.skin]||SKINS[0]):(opts.skin||SKINS[0]));
+  }
+  applySkin(sk){
+    this.skin=sk;const M=this.M;
+    M.shell.color.set(sk.shell);M.belly.color.set(sk.belly);M.trim.color.set(sk.trim);M.limb.color.set(sk.limb||sk.shell);M.inner.color.set(sk.inner);
+    M.glow.color.set(sk.accent);M.glow.emissive.set(sk.accent);M.heart.color.set(sk.accent==='#7ED957'||sk.accent==='#7BD88F'?'#FF7AB0':sk.accent);
+    for(const o of this.accParts){if(o.parent)o.parent.remove(o);o.traverse(x=>{if(x.geometry)x.geometry.dispose();if(x.material&&!x.material.userData.shared)x.material.dispose();});}
+    this.accParts=[];this.accAnims=[];this.buildAcc(sk);
+    if(this.onSkin)this.onSkin(sk);
+  }
+  buildAcc(sk){
+    const M=this.M,hp=this.headPivot,HC=.62,A=this.accAnims;
+    const add=(parent,o)=>{parent.add(o);this.accParts.push(o);return o;};
+    const mat=c=>new THREE.MeshStandardMaterial({color:c,roughness:.45});
+    const sph=(r,w=20,h=14)=>new THREE.SphereGeometry(r,w,h);
+    for(const a of sk.acc){switch(a){
+      case 'antenna':{const g=new THREE.Group();g.position.set(0,HC+.72,0);const st=new THREE.Mesh(new THREE.CylinderGeometry(.028,.034,.3,10),M.trim);st.position.y=.15;g.add(st);const tip=new THREE.Mesh(sph(.12),M.glow);tip.position.y=.34;g.add(tip);add(hp,g);A.push(t=>{g.rotation.z=Math.sin(t*4.5)*.14;g.rotation.x=Math.sin(t*3.1)*.06;});break;}
+      case 'discs':{for(const s of [-1,1]){const d=new THREE.Mesh(new THREE.CylinderGeometry(.2,.2,.14,28),M.trim);d.rotation.z=Math.PI/2;d.position.set(s*.97,HC,0);add(hp,d);const d2=new THREE.Mesh(new THREE.CylinderGeometry(.12,.12,.16,24),M.glow);d2.rotation.z=Math.PI/2;d2.position.set(s*.99,HC,0);add(hp,d2);}break;}
+      case 'bow':{const g=new THREE.Group();g.position.set(.6,HC+.6,.22);g.rotation.z=-.5;const m=mat(sk.bow||sk.accent);for(const s of [-1,1]){const c=new THREE.Mesh(new THREE.ConeGeometry(.15,.28,20),m);c.rotation.z=s*Math.PI/2;c.position.x=s*.13;g.add(c);}g.add(new THREE.Mesh(sph(.08,16,12),m));add(hp,g);A.push(t=>{g.scale.setScalar(1+Math.sin(t*3)*.04);});break;}
+      case 'catEars':{for(const s of [-1,1]){const g=new THREE.Group();g.position.set(s*.5,HC+.58,0);g.rotation.z=-s*.38;const e=new THREE.Mesh(new THREE.ConeGeometry(.27,.46,24),M.shell);e.position.y=.2;g.add(e);const i=new THREE.Mesh(new THREE.ConeGeometry(.15,.3,20),M.inner);i.position.set(0,.16,.1);g.add(i);add(hp,g);A.push(t=>{const tw=Math.pow(Math.max(0,Math.sin(t*1.3+s*.7)),24);g.rotation.z=-s*(.38+tw*.3);});}break;}
+      case 'tail':{const g=new THREE.Group();g.position.set(0,-.2,-.42);const curve=new THREE.CatmullRomCurve3([new THREE.Vector3(0,0,0),new THREE.Vector3(0,.05,-.3),new THREE.Vector3(.12,.35,-.45),new THREE.Vector3(.05,.66,-.35)]);g.add(new THREE.Mesh(new THREE.TubeGeometry(curve,24,.075,10,false),M.shell));const tip=new THREE.Mesh(sph(.1),M.inner);tip.position.set(.05,.66,-.35);g.add(tip);add(this.body,g);A.push(t=>{g.rotation.y=Math.sin(t*3)*.45;g.rotation.z=Math.sin(t*3)*.12;});break;}
+      case 'bunnyEars':{for(const s of [-1,1]){const g=new THREE.Group();g.position.set(s*.3,HC+.64,0);const e=new THREE.Mesh(sph(.5,24,18),M.shell);e.scale.set(.3,1,.2);e.position.y=.46;g.add(e);const i=new THREE.Mesh(sph(.5,20,14),M.inner);i.scale.set(.17,.78,.1);i.position.set(0,.46,.06);g.add(i);add(hp,g);const flop=s>0;A.push(t=>{g.rotation.z=-s*.12-(flop?.55+Math.sin(t*2)*.08:Math.sin(t*1.7)*.05);g.rotation.x=flop?-.12:0;});}break;}
+      case 'bearEars':{for(const s of [-1,1]){const e=new THREE.Mesh(sph(.22,20,16),M.trim);e.scale.set(1,1,.6);e.position.set(s*.62,HC+.6,0);add(hp,e);const i=new THREE.Mesh(sph(.12,16,12),M.inner);i.scale.set(1,1,.4);i.position.set(s*.62,HC+.6,.1);add(hp,i);}break;}
+      case 'leaf':{const g=new THREE.Group();g.position.set(0,HC+.72,0);const st=new THREE.Mesh(new THREE.CylinderGeometry(.025,.03,.26,8),mat('#3E9B4F'));st.position.y=.13;g.add(st);const lm=mat(sk.leaf||'#6CD47E');for(const s of [-1,1]){const l=new THREE.Mesh(sph(.2),lm);l.scale.set(1,.3,.55);l.position.set(s*.17,.3,0);l.rotation.z=s*.45;g.add(l);}add(hp,g);A.push(t=>{g.rotation.z=Math.sin(t*2.2)*.15;});break;}
+      case 'beanie':{const g=new THREE.Group();g.position.y=HC;g.scale.set(1.2,.95,1);const hm=mat(sk.hat||'#FF5A6E'),wm=mat('#FFFFFF');g.add(new THREE.Mesh(new THREE.SphereGeometry(.86,36,14,0,Math.PI*2,0,.8),hm));const brim=new THREE.Mesh(new THREE.TorusGeometry(.61,.08,12,48),wm);brim.rotation.x=Math.PI/2;brim.position.y=.6;g.add(brim);const pom=new THREE.Mesh(sph(.17,18,14),wm);pom.position.y=.98;g.add(pom);add(hp,g);
+        const sc=new THREE.Mesh(new THREE.TorusGeometry(.35,.11,12,40),hm);sc.rotation.x=Math.PI/2;sc.position.y=.44;add(this.body,sc);const end=new THREE.Mesh(new THREE.BoxGeometry(.17,.42,.07),hm);end.position.set(.2,.2,.44);add(this.body,end);A.push(t=>{end.rotation.z=.18+Math.sin(t*2.4)*.1;pom.position.y=.98+Math.sin(t*4)*.02;});break;}
+      case 'nightcap':{const g=new THREE.Group();g.position.set(-.05,HC+.55,0);const cm=mat(sk.hat||'#4B5BD6'),ym=mat('#FFE27A');const cone=new THREE.Mesh(new THREE.ConeGeometry(.56,1.15,32),cm);cone.position.y=.5;g.add(cone);const brim=new THREE.Mesh(new THREE.TorusGeometry(.58,.08,12,48),mat('#FFFFFF'));brim.rotation.x=Math.PI/2;brim.position.y=-.04;g.add(brim);const pom=new THREE.Mesh(sph(.13),ym);pom.position.y=1.1;g.add(pom);
+        for(let i=0;i<5;i++){const st=new THREE.Mesh(new THREE.OctahedronGeometry(.05),ym);const a=i*1.3,yy=.15+i*.17,rr=.56*(1-(yy+.075)/1.15);st.position.set(Math.cos(a)*rr,yy,Math.sin(a)*rr);g.add(st);}
+        add(hp,g);A.push(t=>{g.rotation.z=.55+Math.sin(t*1.6)*.07;});break;}
+    }}
+  }
+  wear(sk,anim=true){if(typeof sk==='string')sk=SKIN_BY[sk];if(!sk)return;if(!anim||REDUCE){this.applySkin(sk);return;}this.pendingSkin=sk;this.poof();this.play('change');this.setEmotion('happy',2.2);}
+  poof(){if(REDUCE)return;const sk=this.skin,cols=[sk.shell,sk.accent,sk.inner,'#FFFFFF',sk.trim,sk.blush];
+    for(let i=0;i<22;i++){const m=new THREE.Mesh(PG[i%3],new THREE.MeshBasicMaterial({color:cols[i%cols.length]}));m.position.set(rand(-.3,.3),rand(.9,1.9),rand(-.1,.5));
+      const v=new THREE.Vector3(rand(-1,1),rand(.2,1.3),rand(-.3,1)).normalize().multiplyScalar(rand(1.8,3.4));this.group.add(m);this.parts.push({m,v,life:0,max:rand(.8,1.2)});}}
+  setEmotion(e,dur=2.5){this.emo=e;this.emoUntil=dur?this.t+dur:Infinity;}
+  play(name,dur){const D={wave:2.4,dance:4.2,jump:1.1,spin:1.3,stretch:2.6,laugh:2.2,shrug:1.8,nod:1.4,hide:3.4,giggle:1.2,change:1.2,carried:9999};
+    if(this.action==='change'&&this.pendingSkin){this.applySkin(this.pendingSkin);this.pendingSkin=null;this.cur.rootRotY=0;}
+    this.action=name;this.aT=0;this.aDur=dur||D[name]||2;this._swapped=false;if(this.sleeping&&name!=='hide')this.sleeping=false;}
+  stop(){if(this.action==='change'&&this.pendingSkin){this.applySkin(this.pendingSkin);this.pendingSkin=null;}if(this.action==='spin'||this.action==='change')this.cur.rootRotY=0;this.action=null;}
+  update(dt){
+    this.t+=dt;const t=this.t,c=this.cur;
+    if(t>this.emoUntil){this.emo=this.sleeping?'sleep':this.baseEmo;this.emoUntil=Infinity;}
+    if(this.sleeping&&this.emoUntil===Infinity)this.emo='sleep';
+    const breathe=REDUCE?0:Math.sin(t*2.2);
+    const T={rootY:0,rootRotY:0,sx:1,sy:1,bodyY:.72+breathe*.022,headX:-this.look.y*.2,headY:this.look.x*.42,headZ:REDUCE?0:Math.sin(t*.9)*.05,armL:-.2-breathe*.05,armR:.2+breathe*.05,armLx:0,armRx:0};
+    if(this.walk>0){const w=this.walk,s=t*11;T.rootY+=Math.abs(Math.sin(s))*.08*w;T.armLx=Math.sin(s)*.7*w;T.armRx=-Math.sin(s)*.7*w;T.headZ+=Math.sin(s)*.06*w;this.feet[0].position.z=.06+Math.sin(s)*.14*w;this.feet[1].position.z=.06-Math.sin(s)*.14*w;}
+    else{this.feet[0].position.z=this.feet[1].position.z=.06;}
+    if(this.fly>.01){const f=this.fly;T.armL=lerp(T.armL,-1.3,f);T.armR=lerp(T.armR,1.3,f);T.armLx=lerp(T.armLx,.6,f);T.armRx=lerp(T.armRx,.6,f);T.rootY+=Math.sin(t*4)*.05*f;this.feet[0].position.z=this.feet[1].position.z=.06-.14*f;}
+    if(this.sleeping){T.bodyY=.68+Math.sin(t*1.1)*.02;T.headX=.3;T.headY=0;T.headZ=.16;T.armL=-.05;T.armR=.05;}
+    if(this.action){
+      this.aT+=dt;const a=this.aT,p=Math.min(1,a/this.aDur);
+      switch(this.action){
+        case 'wave':{const up=smooth(a/.3)*smooth((this.aDur-a)/.3);T.armR=.2+up*(2.35+Math.sin(a*12)*.35);T.headZ+=up*.14;break;}
+        case 'dance':{const s=a*8;T.rootY+=Math.abs(Math.sin(s))*.16;T.rootRotY=Math.sin(a*4)*.45;T.armL=-.4-(Math.sin(s)*.5+.5)*1.6;T.armR=.4+(Math.cos(s)*.5+.5)*1.6;T.headZ+=Math.sin(a*4)*.2;break;}
+        case 'jump':{if(p<.18){T.sy=1-.18*Math.sin(p/.18*Math.PI);T.sx=1+(1-T.sy)*.6;}else if(p<.82){const q=(p-.18)/.64,k=Math.sin(q*Math.PI);T.rootY+=k*1.1;T.sy=1+.08*k;T.sx=1-.04*k;T.armL=-.2-2.2*k;T.armR=.2+2.2*k;}else{const q=(p-.82)/.18;T.sy=1-.14*Math.sin(q*Math.PI);T.sx=1+(1-T.sy)*.6;}break;}
+        case 'spin':{T.rootRotY=easeInOut(p)*Math.PI*2;c.rootRotY=T.rootRotY;const k=Math.sin(p*Math.PI);T.rootY+=k*.3;T.armL=-.2-1.2*k;T.armR=.2+1.2*k;break;}
+        case 'change':{T.rootRotY=easeInOut(p)*Math.PI*2;c.rootRotY=T.rootRotY;const k=p<.5?1-smooth(p/.5)*.8:.2+.8*backOut((p-.5)/.5);T.sx=T.sy=k;c.sx=c.sy=k;T.rootY+=Math.sin(p*Math.PI)*.45;T.armL=-1.4;T.armR=1.4;
+          if(p>=.5&&!this._swapped){this._swapped=true;if(this.pendingSkin){this.applySkin(this.pendingSkin);this.pendingSkin=null;}this.poof();}break;}
+        case 'stretch':{const up=smooth(a/.5)*smooth((this.aDur-a)/.5);T.armL=-.2-up*2.75;T.armR=.2+up*2.75;T.sy=1+up*.06;T.headX=-.25*up;break;}
+        case 'laugh':{T.bodyY+=Math.abs(Math.sin(a*18))*.05;T.headX=-.15;T.headZ+=Math.sin(a*9)*.07;T.armL=-.5;T.armR=.5;break;}
+        case 'shrug':{const k=Math.sin(p*Math.PI);T.armL=-.2-k*.9;T.armR=.2+k*.9;T.armLx=T.armRx=-k*.6;T.headZ+=k*.25;T.bodyY+=k*.04;break;}
+        case 'giggle':{T.rootY+=Math.abs(Math.sin(a*14))*.12*(1-p);T.headZ+=Math.sin(a*20)*.08*(1-p);break;}
+        case 'nod':{T.headX=Math.sin(p*Math.PI*4)*.25;break;}
+        case 'hide':{const k=p<.2?smooth(p/.2):p>.8?smooth((1-p)/.2):1;T.sx=T.sy=1-k*.98;T.rootRotY=k*Math.PI;break;}
+        case 'carried':{T.armL=-2.3+Math.sin(a*7)*.2;T.armR=2.3-Math.sin(a*7)*.2;T.headZ+=Math.sin(a*5)*.12;T.headX=.1;this.feet[0].position.z=.06+Math.sin(a*9)*.14;this.feet[1].position.z=.06-Math.sin(a*9)*.14;break;}
+      }
+      if(this.action&&this.aT>=this.aDur){const done=this.action;this.action=null;if(done==='spin'||done==='change'){c.rootRotY-=Math.PI*2;T.rootRotY=0;}if(done==='change'&&this.pendingSkin){this.applySkin(this.pendingSkin);this.pendingSkin=null;}if(this.onActionEnd)this.onActionEnd(done);}
+    }
+    const k=1-Math.exp(-dt*(this.action?30:9));
+    for(const key in T)c[key]=lerp(c[key],T[key],k);
+    this.root.position.y=c.rootY;this.root.rotation.y=c.rootRotY;this.root.scale.set(c.sx,c.sy,c.sx);
+    this.body.position.y=c.bodyY;this.headPivot.rotation.set(c.headX,c.headY,c.headZ);
+    this.armL.rotation.set(c.armLx,0,c.armL);this.armR.rotation.set(c.armRx,0,c.armR);
+    if(!REDUCE)for(const f of this.accAnims)f(t);
+    for(let i=this.parts.length-1;i>=0;i--){const q=this.parts[i];q.life+=dt;q.m.position.addScaledVector(q.v,dt);q.v.y-=4.5*dt;q.v.multiplyScalar(1-dt*1.6);q.m.rotation.x+=dt*7;q.m.rotation.y+=dt*5;
+      q.m.scale.setScalar(Math.max(.001,1-q.life/q.max));if(q.life>=q.max){this.group.remove(q.m);q.m.material.dispose();this.parts.splice(i,1);}}
+    let open=1;
+    if(this.blinkT<0&&t>this.blinkNext)this.blinkT=0;
+    if(this.blinkT>=0){this.blinkT+=dt;const b=this.blinkT/.16;open=Math.abs(1-2*Math.min(1,b));if(b>=1){this.blinkT=-1;this.blinkNext=t+rand(2,6);open=1;}}
+    const kl=Math.min(1,dt*7);this.look.x+=(this.lookTarget.x-this.look.x)*kl;this.look.y+=(this.lookTarget.y-this.look.y)*kl;
+    drawFace(this.fx,this.fw,this.fh,this.emo,open,this.look.x,this.look.y,t,this.skin);this.tex.needsUpdate=true;
+    const pulse=this.emo==='sleep'||this.emo==='sleepy'?.1:Math.pow(Math.max(0,Math.sin(t*3)),6);
+    this.heartM.scale.setScalar(.12*(1+.18*pulse));
+    this.M.glow.emissiveIntensity=.3+.35*pulse;
+  }
+}
+
+function addLights(scene,intensity=1){
+  scene.add(new THREE.HemisphereLight(0xffffff,0x9a8fb8,.9*intensity));
+  const d=new THREE.DirectionalLight(0xffffff,.8*intensity);d.position.set(3,5,4);scene.add(d);
+  const rim=new THREE.DirectionalLight(0xffc4e6,.55*intensity);rim.position.set(-4,3,-3);scene.add(rim);
+}
+
+</script>
+<script>
+(function(){
+"use strict";
+const $=s=>document.querySelector(s);
+
+/* ---------------- the menu ---------------- */
+// [id, category, title, what Blink does, trigger, where, iPhone, permission, effort, preview, starter, future]
+const IDEAS=[
+ ['wake-yawn','wake','Sleepy wake-up','The screen lights up and Blink is curled up asleep under the clock. It rubs its eyes and blinks at you.','Screen turns on','lock','lp','',  'S','wake',1,0],
+ ['unlock-hello','wake','Unlock hello','You unlock and Blink stretches, hops and waves. A different greeting every time.','Unlock','both','lp','','S','unlock',1,0],
+ ['missed-you','wake','Missed you','First unlock after hours away: Blink runs in from the side with hearts in its eyes.','Unlock after a long gap','both','','','S','love',1,0],
+ ['unlock-count','wake','Unlock counter','Counts unlocks. At 50 a day it holds up a sign: "50 peeks! Coffee break?"','Every unlock','both','','','S','count',1,0],
+ ['speedy-unlock','wake','Speedy unlock','Unlock again within 10 seconds and Blink spins dizzily: "Forgot something?"','Two unlocks in a row','home','','','S','spin',0,0],
+ ['lights-out','wake','Lights out','Lock the phone and the next wake shows Blink tucked in, snoring softly.','Screen locked','lock','','','S','sleep',0,0],
+ ['curtain','wake','Curtain pull','As you swipe up to unlock, Blink grabs the edge and pulls the lock screen up like a curtain.','Unlock swipe','lock','','','L','unlock',0,1],
+ ['wrong-pin','wake','Wrong PIN gasp','A failed unlock: Blink covers its eyes, peeks, and whispers "try again".','Failed unlock','lock','','Device admin','M','surprised',0,1],
+
+ ['page-walk','home','Page-swipe walk','Swipe between home pages and Blink walks along with you. Sometimes it gets left behind and runs to catch up.','Home page swipe','home','','','M','swipe',1,0],
+ ['tap-hop','home','Tap and hop','Tap empty wallpaper and Blink hops to that spot with a giggle.','Tap','home','','','S','tap',1,0],
+ ['see-you','home','See you soon','Open an app and Blink waves you off. Come back and it says "Back already?" or "That was a long one!"','App opened, home again','home','','','S','wave',1,0],
+ ['icon-peek','home','Icon peek-a-boo','Blink hides behind a row of app icons and peeks out with one eye.','Idle','home','','','M','peek',0,0],
+ ['dock-nap','home','Dock nap','Nothing happening for a while? Blink lies down on the dock and naps.','Idle','home','','','S','sleep',0,0],
+ ['folder-dive','home','Folder dive','Blink dives into the wallpaper behind a folder and pops out somewhere else.','Idle or tap','home','','','M','dive',0,0],
+ ['shortcuts','home','App-icon shortcuts','Long-press Blink\'s app icon for quick actions: Dance, New outfit, Nap.','Long-press icon','home','','','S','dance',0,0],
+
+ ['morning','time','Good morning','First unlock after 6 am: Blink opens tiny curtains and says good morning in its sunny outfit.','Time of day','both','w','','S','morning',1,0],
+ ['lunch','time','Lunch munch','Around noon Blink munches a sandwich and nudges you to take a real break.','Midday','both','w','','S','lunch',0,0],
+ ['bedtime','time','Bedtime nightcap','After 10 pm: nightcap on, big yawns, "Phone down soon?"','Night','both','w','','S','bedtime',1,0],
+ ['friday','time','Friday party','Friday evening brings confetti and a happy dance.','Day of the week','both','w','','S','dance',0,0],
+ ['seasons','time','Seasonal outfits','Snow Buddy in winter, a blossom crown in spring, a pumpkin hat in October.','Calendar date','both','w','','M','outfit',0,0],
+ ['birthday','time','Birthday cake','On your birthday (a date you set, kept only on the phone) Blink brings a cake with candles.','Your date','both','w','','S','love',0,0],
+ ['hourly','time','Hourly stretch','On the hour, a quick stretch on top of the lock-screen clock.','Every hour','lock','','','S','stretch',0,0],
+
+ ['charging','status','Charging snack','Plug in: Blink plugs a cable into its back and sips electrons while its belly heart fills up.','Charger connected','both','','','M','charge',1,0],
+ ['low-battery','status','Low battery yawn','Below 15% Blink moves slowly with heavy eyes: "Find a charger…"','Battery low','both','','','S','lowbatt',1,0],
+ ['full-power','status','Full power flex','100% charged: Blink flexes and sparkles.','Battery full','both','','','S','flex',0,0],
+ ['headphones','status','Headphone groove','Plug in headphones and Blink puts on its own pair and bobs its head.','Headphones connected','both','','','S','music',1,0],
+ ['airplane','status','Pilot mode','Airplane mode on: goggles down, Blink flies loops.','Airplane mode','both','','','S','fly',0,0],
+ ['signal','status','Signal hunt','Offline: Blink raises its antenna and wanders around looking for Wi-Fi.','No connection','home','','','S','curious',0,0],
+ ['dnd','status','Shh mode','Do Not Disturb on: finger to lips, tiptoes, no antics until it ends.','Do Not Disturb','both','','Do Not Disturb access','S','dnd',0,0],
+
+ ['shake','motion','Shake it','Shake the phone and Blink bounces off the edges, then sits down dizzy.','Shake','both','','','S','shake',1,0],
+ ['tilt','motion','Tilt slide','Tilt the phone and Blink slides, grabs an icon and dangles.','Tilt','home','','','M','tilt',0,0],
+ ['face-down','motion','Face-down nap','Phone face down on the table: Blink sleeps until you pick it up.','Phone face down','both','','','S','sleep',0,0],
+ ['pocket','motion','Pocket mode','In a pocket or bag: "It\'s dark in here!" and a tiny flashlight on the next wake.','Dark and covered','lock','','','S','surprised',0,0],
+ ['steps','motion','Walk buddy','Blink jogs as your steps add up and cheers at 5,000 and 10,000.','Step counter','both','','Physical activity','M','walk',0,0],
+ ['sunglasses','motion','Sunglasses','Bright sunlight: Blink puts on sunglasses.','Light sensor','both','','','S','flex',0,0],
+
+ ['mail','notify','Mail carrier','A new message arrives and Blink carries an envelope across the screen. It never reads the message.','New notification','both','','Notification access','M','message',1,0],
+ ['missed-call','notify','Missed call','Missed a call? Blink holds up a tiny phone and points at it.','Missed call','lock','','Notification access','M','call',0,0],
+ ['juggle','notify','Notification juggle','Lots of notifications: Blink juggles them, drops one, shrugs.','Many notifications','lock','','Notification access','M','juggle',0,0],
+ ['meeting','notify','Meeting nudge','Calendar event in 5 minutes: Blink taps its wrist.','Calendar','both','w','Calendar access','M','meeting',0,0],
+
+ ['pet','play','Pet and purr','Stroke Blink with your finger: love-heart eyes and a happy wiggle.','Swipe on Blink','home','','','S','pet',1,0],
+ ['outfit-day','play','Outfit of the day','A new outfit every morning. Tap Blink twice to change it yourself.','Daily or double-tap','both','w','','S','outfit',1,0],
+ ['snack','play','Snack time','Drag a cookie onto Blink and it munches happily.','Drag','home','','','M','lunch',0,0],
+ ['hide-seek','play','Hide and seek','Blink hides on a random home page. Find it to keep a daily streak.','Once a day','home','','','M','dive',0,0],
+ ['voice','play','Talk to Blink','Tap Blink\'s widget and speak: "dance", "new outfit", "nap".','Widget tap','home','','Microphone','M','dance',0,0],
+ ['selfie','play','Selfie postcard','Blink strikes a pose and you save it as a picture to share.','Button','home','','','M','flex',0,0],
+
+ ['break','well','Screen-time nudge','After 30 minutes of nonstop use Blink yawns, stretches and suggests a break.','Phone in use','home','','Usage access','M','stretch',1,0],
+ ['eyes','well','20-20-20 eyes','Every 20 minutes Blink points into the distance: look 20 feet away for 20 seconds.','Timer','home','','','S','stretch',0,0],
+ ['breathe','well','Breathing buddy','Tap Blink\'s heart and its belly glows in and out to pace your breathing.','Tap the heart','home','','','S','breathe',0,0],
+ ['water','well','Water sips','Blink sips water every two hours as a reminder.','Timer','both','w','','S','lunch',0,0],
+
+ ['weather','future','Weather outfits','Umbrella when it rains, scarf when it\'s cold.','Weather','both','w','Location, internet','M','outfit',0,1],
+ ['handoff','future','Desk to phone','Blink walks off your PC screen and appears on your phone.','Same Wi-Fi','both','','Local network','L','wave',0,1],
+ ['ar','future','Blink on your desk','Camera mode: Blink stands on your real table in AR.','Open the camera mode','home','','Camera','L','dance',0,1],
+ ['routine','future','Learns your routine','Blink hangs out on the home page you use most and learns your break times.','Patterns over days','home','','','L','curious',0,1],
+ ['evolve','future','Grow and unlock','Daily streaks unlock new hats, tricks and dances.','Streaks','both','','','M','outfit',0,1],
+ ['friends','future','Friend visits','A friend\'s Blink drops by your home screen to say hi.','Internet','home','','Internet','L','wave',0,1],
+ ['watch','future','Watch cameo','Blink on your smartwatch face, waving when you raise your wrist.','Raise wrist','both','','Watch app','L','wave',0,1],
+ ['episodes','future','Daily episodes','Tiny 10-second stories each day: Blink learns to bake, goes fishing, plants a seed.','Once a day','both','','','L','dance',0,1],
+ ['designer','future','Outfit designer','Design your own outfit: pick colours, ears, hats and tails.','In the app','home','','','M','outfit',0,1]
+];
+const CATS=[
+ ['wake','Waking and unlocking','The first second when the screen lights up.'],
+ ['home','Home screen life','Blink lives behind your app icons.'],
+ ['time','Time and daily rhythm','Little rituals through the day.'],
+ ['status','Phone status','Battery, headphones and connections, turned into reactions.'],
+ ['motion','Movement and sensors','Shake, tilt, pocket and steps.'],
+ ['notify','Messages and calendar','Blink notices that something arrived. It never reads it.'],
+ ['play','Touch and play','Things you do to Blink.'],
+ ['well','Wellbeing','Friendly nudges, never nagging.'],
+ ['future','Future and imagination','Bigger ideas for later versions.']
+];
+const WHERE={lock:['lock','Lock screen'],home:['home','Home screen'],both:['both','Lock + Home']};
+const IOS={lp:'iPhone: only as a Live Photo that plays when you wake the phone',w:'iPhone: possible as a static widget','':'iPhone: not possible'};
+const EFF={S:'Small',M:'Medium',L:'Large'};
+const ideas=IDEAS.map(a=>({id:a[0],cat:a[1],t:a[2],d:a[3],trig:a[4],where:a[5],ios:a[6],perm:a[7],eff:a[8],demo:a[9],star:!!a[10],fut:!!a[11]}));
+
+/* ---------------- state + saving ---------------- */
+const state={selected:new Set(),custom:[],notes:''};
+let ref=null,writing=false,dirty=false,saveTimer=null,readOnly=false,loaded=false;
+const saveEl=$('#saveState');
+const setSave=t=>{saveEl.textContent=t;};
+function local(k,v){try{if(v===undefined)return JSON.parse(localStorage.getItem('blinkMoments.'+k)||'null');localStorage.setItem('blinkMoments.'+k,JSON.stringify(v));}catch(e){return null;}}
+function body(){return{selected:[...state.selected],custom:state.custom,notes:state.notes,updatedAt:new Date().toISOString()};}
+function queueSave(){if(readOnly)return;dirty=true;clearTimeout(saveTimer);setSave('Saving…');saveTimer=setTimeout(flush,700);}
+async function flush(){if(writing||!dirty)return;dirty=false;writing=true;const b=body();
+  if(ref){try{await ref.set(b);setSave('Saved');}catch(e){if(e&&e.code==='invalid_argument'){readOnly=true;setSave('View only: picks are not saved');}else if(e&&e.code==='quota_exceeded'){setSave('Storage is full');}else{dirty=true;setSave('Could not save yet, retrying');}}}
+  else{local('state',b);setSave('Saved in this browser');}
+  writing=false;if(dirty)saveTimer=setTimeout(flush,1500);}
+function apply(d){if(!d)return;state.selected=new Set(Array.isArray(d.selected)?d.selected.filter(x=>typeof x==='string'):[]);state.custom=Array.isArray(d.custom)?d.custom.filter(c=>c&&typeof c.t==='string').slice(0,60):[];state.notes=typeof d.notes==='string'?d.notes:'';syncUI();}
+async function initStore(){
+  let db=null;
+  try{if(window.claude&&typeof window.claude.use==='function')db=await window.claude.use('db');}catch(e){db=null;}
+  if(!db){apply(local('state'));loaded=true;setSave(state.selected.size?'Saved in this browser':'');return;}
+  ref=db.doc('picks/current');
+  const t=setTimeout(()=>{if(!loaded)setSave('Can\'t reach saved picks yet');},10000);
+  ref.onSnapshot(s=>{if(!s.metadata.fromCache)clearTimeout(t);
+    if(!loaded||(!dirty&&!writing&&!s.metadata.hasPendingWrites)){if(s.exists)apply(s.data());loaded=true;if(!s.metadata.fromCache&&!dirty)setSave(s.exists?'Saved':'');}},
+    e=>{clearTimeout(t);loaded=true;setSave('Saving is unavailable here');ref=null;});
+}
+
+/* ---------------- render the menu ---------------- */
+const catsEl=$('#cats');
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function cardHTML(i){const w=WHERE[i.where];return `<label class="pick"><input type="checkbox" id="pick-${i.id}" data-id="${i.id}"><b>${esc(i.t)}</b></label>
+  <p>${esc(i.d)}</p>
+  <div class="tags"><span class="tag ${w[0]}">${w[1]}</span><span class="tag">${esc(i.trig)}</span>${i.perm?`<span class="tag perm">Needs ${esc(i.perm)}</span>`:''}<span class="tag">${EFF[i.eff]}</span>${i.star?'<span class="tag star">Starter pack</span>':''}${i.fut?'<span class="tag fut">Future</span>':''}</div>
+  <div class="idea-foot"><span class="ios">${IOS[i.ios]}</span><button class="prev" type="button" data-demo="${i.demo}" data-title="${esc(i.t)}">Preview</button></div>`;}
+for(const [cid,name,sub] of CATS){const sec=document.createElement('section');sec.className='cat';sec.dataset.cat=cid;
+  sec.innerHTML=`<div class="cat-h"><h2>${name}</h2><span class="count"></span></div><p class="sub">${sub}</p><div class="grid"></div>`;
+  const g=sec.querySelector('.grid');for(const i of ideas.filter(x=>x.cat===cid)){const a=document.createElement('article');a.className='idea';a.dataset.id=i.id;a.innerHTML=cardHTML(i);g.appendChild(a);}
+  catsEl.appendChild(sec);}
+catsEl.addEventListener('change',e=>{const cb=e.target.closest('input[data-id]');if(!cb)return;cb.checked?state.selected.add(cb.dataset.id):state.selected.delete(cb.dataset.id);syncUI();queueSave();
+  if(cb.checked){const i=ideas.find(x=>x.id===cb.dataset.id);if(i)runDemo(i.demo,i.t);}});
+const runDemo=(k,t)=>window.__blinkDemo&&window.__blinkDemo(k,t);
+catsEl.addEventListener('click',e=>{const b=e.target.closest('.prev');if(!b)return;runDemo(b.dataset.demo,b.dataset.title);if(innerWidth<980)$('#phone').scrollIntoView({behavior:'smooth',block:'center'});});
+
+const FILTERS=[['all','All ideas',()=>true],['star','Starter pack',i=>i.star],['picked','My picks',i=>state.selected.has(i.id)],['lock','On the lock screen',i=>i.where!=='home'],['home','On the home screen',i=>i.where!=='lock'],['noperm','No extra permissions',i=>!i.perm],['ios','Works a bit on iPhone',i=>!!i.ios],['future','Future ideas',i=>i.fut]];
+let filter='all';const fEl=$('#filters');
+for(const [id,l] of FILTERS){const b=document.createElement('button');b.className='fchip';b.type='button';b.dataset.f=id;b.textContent=l;b.setAttribute('aria-pressed',id===filter);b.addEventListener('click',()=>{filter=id;fEl.querySelectorAll('.fchip').forEach(x=>x.setAttribute('aria-pressed',x.dataset.f===id));syncUI();});fEl.appendChild(b);}
+
+function syncUI(){
+  const fn=FILTERS.find(f=>f[0]===filter)[2];
+  for(const i of ideas){const card=catsEl.querySelector(`.idea[data-id="${i.id}"]`);const on=state.selected.has(i.id);card.classList.toggle('on',on);card.querySelector('input').checked=on;card.hidden=!fn(i);}
+  for(const sec of catsEl.querySelectorAll('.cat')){const all=ideas.filter(i=>i.cat===sec.dataset.cat);const vis=all.filter(fn).length;sec.hidden=vis===0;const n=all.filter(i=>state.selected.has(i.id)).length;sec.querySelector('.count').textContent=n?`${n} of ${all.length} picked`:`${all.length} ideas`;}
+  renderOwn();
+  const notes=$('#notes');if(document.activeElement!==notes)notes.value=state.notes;
+  const picked=ideas.filter(i=>state.selected.has(i.id));const total=picked.length+state.custom.length;
+  $('#pickCount').textContent=`${total} picked`;
+  if(!total){$('#pickStats').textContent='Nothing picked yet. The starter pack is a good first version.';}
+  else{const by=k=>picked.filter(i=>i.eff===k).length;const perms=[...new Set(picked.map(i=>i.perm).filter(Boolean))];
+    const where={lock:picked.filter(i=>i.where!=='home').length,home:picked.filter(i=>i.where!=='lock').length};
+    $('#pickStats').textContent=`${where.lock} on the lock screen · ${where.home} on the home screen · effort: ${by('S')} small, ${by('M')} medium, ${by('L')} large${state.custom.length?` · ${state.custom.length} of your own`:''} · ${perms.length?'needs: '+perms.join(', '):'no extra permissions'}`;}
+}
+function renderOwn(){const el=$('#ownList');el.textContent='';
+  for(const c of state.custom){const a=document.createElement('article');a.className='idea on';
+    const h=document.createElement('div');h.className='pick';const b=document.createElement('b');b.textContent=c.t;h.appendChild(b);
+    const p=document.createElement('p');p.textContent=c.d||'';const f=document.createElement('div');f.className='idea-foot';
+    const tag=document.createElement('span');tag.className='tag star';tag.textContent='Your idea';const x=document.createElement('button');x.className='x';x.type='button';x.textContent='Remove';
+    x.addEventListener('click',()=>{state.custom=state.custom.filter(k=>k!==c);syncUI();queueSave();});f.append(tag,x);a.append(h,p,f);el.appendChild(a);}}
+initStore();
+$('#ownForm').addEventListener('submit',e=>{e.preventDefault();const t=$('#ownTitle').value.trim(),d=$('#ownDesc').value.trim();if(!t)return;state.custom.push({t,d});$('#ownTitle').value='';$('#ownDesc').value='';syncUI();queueSave();});
+let notesT=null;$('#notes').addEventListener('input',e=>{state.notes=e.target.value;clearTimeout(notesT);notesT=setTimeout(queueSave,600);});
+$('#starterBtn').addEventListener('click',()=>{ideas.filter(i=>i.star).forEach(i=>state.selected.add(i.id));syncUI();queueSave();runDemo('unlock','Starter pack');});
+const clearBtn=$('#clearBtn');let clearArmed=false;
+clearBtn.addEventListener('click',()=>{if(!clearArmed){clearArmed=true;clearBtn.textContent='Tap again to clear';setTimeout(()=>{clearArmed=false;clearBtn.textContent='Clear';},2500);return;}clearArmed=false;clearBtn.textContent='Clear';state.selected.clear();syncUI();queueSave();});
+syncUI();
+
+/* ---------------- the preview phone ---------------- */
+const screenEl=$('#screen'),phone=$('#phone'),propsEl=$('#props'),dbub=$('#dbubble'),label=$('#demoLabel');
+const APPS=['#FF9EC7','#FFD447','#8FD3FF','#9FE8B0','#FFB38A','#C9B5FF','#7FDCCB','#FF8A8A','#B7E07A','#F7A6E0','#8EC5FF','#FFC86B'];
+const pagesEl=$('#pages');for(let p=0;p<2;p++){const pg=document.createElement('div');pg.className='page';for(let k=0;k<12;k++){const a=document.createElement('div');a.className='app';const c=APPS[(k+p*5)%APPS.length];a.innerHTML=`<i style="background:${c}"></i>${['Photos','Mail','Maps','Music','Notes','Chat','Clock','Games','Shop','Fit','News','Bank'][(k+p*3)%12]}`;pg.appendChild(a);}pagesEl.appendChild(pg);}
+function tickClock(){const d=new Date();$('#clock').textContent=d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'}).replace(/\s?[AP]M$/i,'');$('#date').textContent=d.toLocaleDateString([],{weekday:'long',day:'numeric',month:'long'});}
+tickClock();setInterval(tickClock,30000);
+
+if(!window.THREE){label.textContent='The 3D preview needs three.js from cdnjs, which did not load.';return;}
+const canvas=$('#demoCanvas');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});renderer.setPixelRatio(Math.min(2,devicePixelRatio||1));renderer.setClearColor(0,0);
+const scene=new THREE.Scene();addLights(scene);
+const cam=new THREE.OrthographicCamera(0,1,1,0,.1,2000);cam.position.z=600;
+const bot=new Bot({skin:'bubblegum'});scene.add(bot.group);
+let W=276,H=596;const HF=2.7;let base=104/HF;
+function size(){W=screenEl.clientWidth;H=screenEl.clientHeight;renderer.setSize(W,H,false);cam.left=0;cam.right=W;cam.top=H;cam.bottom=0;cam.updateProjectionMatrix();base=Math.min(W*.36,110)/HF;}
+new ResizeObserver(size).observe(screenEl);size();
+const GROUND=()=>H-92, LOCKGROUND=()=>H-150;
+const P={x:138,y:0,face:0,tilt:0,vanish:1,vanishT:1,tw:null};P.y=LOCKGROUND();
+let seq=0,timers=[],T=0;
+const later=(s,fn)=>{const my=seq;timers.push({at:T+s,fn,my});};
+function moveTo(x,y,d,mode='walk',then){P.tw={x0:P.x,y0:P.y,x1:x,y1:y,t:0,d,mode,then};}
+function say(t,s=2.6){dbub.textContent=t;dbub.classList.add('on');say.until=T+s;}
+const SVG={
+ heart:'<path d="M20 34C8 25 3 19 3 12a8 8 0 0 1 17-3 8 8 0 0 1 17 3c0 7-5 13-17 22z" fill="#FF6FAE"/>',
+ sun:'<circle cx="20" cy="20" r="9" fill="#FFC93C"/><g stroke="#FFC93C" stroke-width="3" stroke-linecap="round"><path d="M20 2v5M20 33v5M2 20h5M33 20h5M7 7l4 4M29 29l4 4M33 7l-4 4M11 29l-4 4"/></g>',
+ moon:'<path d="M27 4a15 15 0 1 0 9 26A13 13 0 0 1 27 4z" fill="#FFE27A"/>',
+ mail:'<rect x="3" y="9" width="34" height="23" rx="3" fill="#fff" stroke="#E2468C" stroke-width="2.5"/><path d="M4 11l16 12 16-12" fill="none" stroke="#E2468C" stroke-width="2.5"/>',
+ bolt:'<path d="M23 2L7 23h11l-3 15 17-22H21z" fill="#FFD447" stroke="#C78A00" stroke-width="1.5"/>',
+ lowbat:'<rect x="3" y="11" width="30" height="18" rx="3" fill="none" stroke="#E04848" stroke-width="3"/><rect x="34" y="16" width="4" height="8" rx="1" fill="#E04848"/><rect x="7" y="15" width="6" height="10" rx="1" fill="#E04848"/>',
+ phones:'<path d="M6 24v-4a14 14 0 0 1 28 0v4" fill="none" stroke="#3A3150" stroke-width="3.5"/><rect x="3" y="22" width="8" height="13" rx="3" fill="#E2468C"/><rect x="29" y="22" width="8" height="13" rx="3" fill="#E2468C"/>',
+ note:'<path d="M15 30V8l18-4v20" fill="none" stroke="#7B5CE0" stroke-width="3"/><circle cx="11" cy="30" r="5" fill="#7B5CE0"/><circle cx="29" cy="25" r="5" fill="#7B5CE0"/>',
+ food:'<path d="M4 20a16 9 0 0 1 32 0z" fill="#F2B866"/><rect x="4" y="20" width="32" height="5" fill="#7ED957"/><rect x="4" y="25" width="32" height="5" rx="2" fill="#E9A04B"/>',
+ clock:'<circle cx="20" cy="20" r="16" fill="#fff" stroke="#3A3150" stroke-width="3"/><path d="M20 10v10l7 5" stroke="#E2468C" stroke-width="3" fill="none" stroke-linecap="round"/>',
+ tap:'<circle cx="20" cy="20" r="8" fill="none" stroke="#fff" stroke-width="3"/><circle cx="20" cy="20" r="16" fill="none" stroke="#fff" stroke-width="2" opacity=".6"/>',
+ star:'<path d="M20 3l5 11 12 1-9 8 3 12-11-6-11 6 3-12-9-8 12-1z" fill="#FFD447"/>',
+ call:'<rect x="11" y="3" width="18" height="34" rx="4" fill="#3A3150"/><rect x="14" y="8" width="12" height="22" rx="1" fill="#8FD3FF"/>',
+ goggle:'<circle cx="12" cy="20" r="8" fill="#8FD3FF" stroke="#3A3150" stroke-width="3"/><circle cx="28" cy="20" r="8" fill="#8FD3FF" stroke="#3A3150" stroke-width="3"/>',
+ shh:'<path d="M20 6v24" stroke="#3A3150" stroke-width="5" stroke-linecap="round"/>',
+ steps:'<ellipse cx="13" cy="24" rx="6" ry="9" fill="#3A3150"/><ellipse cx="27" cy="14" rx="6" ry="9" fill="#3A3150"/>'
+};
+function prop(kind,x,y,cls='pop',life=2.6,follow=false){const d=document.createElement('div');d.className='prop '+cls;d.innerHTML=`<svg viewBox="0 0 40 40">${SVG[kind]||''}</svg>`;d.style.transform=`translate(${x-20}px,${y-20}px)`;propsEl.appendChild(d);if(follow)d.dataset.follow=follow;if(life)later(life,()=>d.remove());return d;}
+function sign(text,life=3){const d=document.createElement('div');d.className='prop sign pop';d.textContent=text;propsEl.appendChild(d);d.dataset.follow='sign';if(life)later(life,()=>d.remove());return d;}
+function cable(on){let c=propsEl.querySelector('.cable');if(on&&!c){c=document.createElement('div');c.className='cable';c.style.height='0px';propsEl.appendChild(c);requestAnimationFrame(()=>c.style.height=Math.max(0,H-P.y+10)+'px');}if(!on&&c)c.remove();if(c)c.style.left=(P.x+base*.6)+'px';}
+function setScreen(m){screenEl.classList.remove('home','dark','swiped','dim');if(m==='home')screenEl.classList.add('home');if(m==='off')screenEl.classList.add('dark');}
+function reset(){seq++;timers=[];propsEl.textContent='';phone.classList.remove('shake');phone.style.transform='';dbub.classList.remove('on');bot.stop();bot.sleeping=false;bot.emo='neutral';bot.emoUntil=Infinity;bot.baseEmo='neutral';P.vanishT=1;P.vanish=Math.max(P.vanish,.05);P.tw=null;}
+const homeY=()=>GROUND(),lockY=()=>LOCKGROUND();
+const DEMOS={
+ wake(){setScreen('off');P.x=W/2;P.y=lockY();bot.sleeping=true;later(.7,()=>setScreen('lock'));later(1.8,()=>{bot.sleeping=false;bot.setEmotion('sleepy',1.2);say('Mm… morning already?');});later(3,()=>{bot.play('stretch');bot.setEmotion('happy',2);});},
+ unlock(){setScreen('lock');P.x=W/2;P.y=lockY();later(.6,()=>{setScreen('home');moveTo(W/2,homeY(),.6,'hop',()=>{bot.play('wave');bot.setEmotion('happy',2.4);say(['Welcome back!','Hi again!','There you are!'][Math.floor(Math.random()*3)]);});});},
+ love(){setScreen('home');P.x=-60;P.y=homeY();moveTo(W/2,homeY(),1.2,'walk',()=>{bot.setEmotion('love',3);bot.play('jump');say('I missed you!');prop('heart',P.x-30,P.y-hPx()-10,'float');prop('heart',P.x+30,P.y-hPx()-20,'float');});},
+ count(){setScreen('home');P.x=W/2;P.y=homeY();bot.play('nod');sign('50 peeks!');say('That\'s 50 unlocks today. Coffee break?',3.2);},
+ spin(){setScreen('home');bot.play('spin');bot.setEmotion('surprised',1.2);later(1.3,()=>{bot.setEmotion('dizzy',2);say('Forgot something?');});},
+ sleep(){setScreen('lock');P.x=W/2;P.y=lockY();bot.sleeping=true;say('Zzz…',2);prop('moon',P.x+50,P.y-hPx()-10,'pop',3);},
+ surprised(){setScreen('lock');bot.play('jump');bot.setEmotion('surprised',2);say('Whoa! Is that you?');},
+ swipe(){setScreen('home');P.x=W*.3;P.y=homeY();later(.3,()=>{screenEl.classList.add('swiped');say('Wait for me!',2);moveTo(W*.85,homeY(),1.6,'walk',()=>{bot.play('giggle');bot.setEmotion('happy',1.5);});});},
+ tap(){setScreen('home');const tx=W*.72,ty=H*.42;prop('tap',tx,ty,'pop',1.2);moveTo(tx,ty+hPx()*.5,.8,'fly',()=>{bot.play('giggle');bot.setEmotion('happy',1.6);say('Boing!',1.4);});},
+ wave(){setScreen('home');bot.play('wave');bot.setEmotion('happy',2);say('See you soon!',1.8);later(2.4,()=>{bot.play('jump');say('Back already?',1.8);});},
+ peek(){setScreen('home');moveTo(W+20,homeY(),1,'walk',()=>later(.7,()=>moveTo(W-56,homeY(),.6,'walk',()=>{bot.play('wave');say('Peekaboo!');})));},
+ dive(){setScreen('home');const tx=W*.15+20,ty=110;moveTo(tx,ty+hPx()*.4,1,'fly',()=>{bot.play('spin');P.vanishT=0;later(1.6,()=>{P.x=W*.85;P.y=230+hPx()*.4;P.vanishT=1;bot.play('jump');bot.setEmotion('happy',2);say('Boo! Took a shortcut.');});});},
+ dance(){setScreen('home');bot.play('dance');bot.setEmotion('happy',4.2);say('Party time!');prop('star',P.x-40,P.y-hPx(),'float');prop('star',P.x+40,P.y-hPx()-10,'float');},
+ morning(){setScreen('lock');P.x=W/2;P.y=lockY();bot.wear('sunny');prop('sun',W-48,90,'pop',3.5);later(1.3,()=>{bot.play('stretch');say('Good morning, sunshine!');});},
+ lunch(){setScreen('home');prop('food',0,0,'pop',3.2,'hand');bot.play('laugh');bot.setEmotion('happy',2.6);say('Lunch time! Take a real break.',3);},
+ bedtime(){setScreen('lock');P.x=W/2;P.y=lockY();screenEl.classList.add('dim');bot.wear('nightcap');prop('moon',W-50,92,'pop',3.6);later(1.4,()=>{bot.setEmotion('sleepy',3);say('Phone down soon? Sweet dreams.',3);});},
+ outfit(){setScreen('home');const ids=SKINS.map(s=>s.id).filter(i=>i!==bot.skin.id);bot.wear(ids[Math.floor(Math.random()*ids.length)]);later(.8,()=>say('New outfit! How do I look?'));},
+ stretch(){setScreen('home');bot.play('stretch');bot.setEmotion('happy',2.6);say('Stretch break! Look far away for 20 seconds.',3);},
+ charge(){setScreen('lock');P.x=W/2;P.y=lockY();cable(true);prop('bolt',0,0,'pop',3.6,'side');bot.setEmotion('love',3.6);bot.play('giggle');say('Mmm, fresh electrons!',3);later(3.6,()=>cable(false));},
+ lowbatt(){setScreen('home');screenEl.classList.add('dim');prop('lowbat',0,0,'pop',3.6,'side');bot.setEmotion('sleepy',3.6);moveTo(P.x+50>W-40?P.x-50:P.x+50,homeY(),2.4,'walk');say('So… sleepy… find a charger…',3.2);},
+ flex(){setScreen('home');bot.play('jump');bot.setEmotion('happy',2);prop('star',P.x-36,P.y-hPx()+10,'float');prop('star',P.x+36,P.y-hPx(),'float');say('100%! Feeling strong!');},
+ music(){setScreen('home');prop('phones',0,0,'pop',4.2,'head');bot.play('dance');bot.setEmotion('happy',4.2);prop('note',P.x+44,P.y-hPx(),'float',2.4);later(1.2,()=>prop('note',P.x-44,P.y-hPx()-10,'float',2.4));say('This one\'s a banger.',2);},
+ fly(){setScreen('home');prop('goggle',0,0,'pop',4.2,'head');moveTo(W*.25,H*.4,1,'fly',()=>moveTo(W*.75,H*.3,1,'fly',()=>moveTo(W/2,homeY(),1,'fly',()=>say('Airplane mode: engaged!'))));},
+ curious(){setScreen('home');bot.setEmotion('curious',3);moveTo(W*.25,homeY(),1.2,'walk',()=>{say('Hello? Wi-Fi? Anyone?',2.4);moveTo(W*.7,homeY(),1.4,'walk');});},
+ dnd(){setScreen('home');prop('shh',0,0,'pop',3,'hand');bot.setEmotion('sleepy',3);say('Shh… focus time.',2.6);},
+ shake(){setScreen('home');phone.classList.add('shake');bot.play('spin');bot.setEmotion('surprised',1);later(1.2,()=>{bot.setEmotion('dizzy',2.4);say('Whoaaa! Again? Maybe not.',2.4);});later(1.1,()=>phone.classList.remove('shake'));},
+ tilt(){setScreen('home');phone.style.transform='rotate(-10deg)';moveTo(42,homeY(),.9,'walk',()=>{bot.setEmotion('surprised',2);say('Hey! Level it out!',2);});later(2.4,()=>{phone.style.transform='';});},
+ walk(){setScreen('home');P.x=-40;sign('5,000 steps!',3.5);moveTo(W+40,homeY(),2.6,'walk',()=>{P.x=W/2;bot.play('jump');bot.setEmotion('happy',2);say('Halfway to 10,000!');});},
+ message(){setScreen('lock');P.x=-40;P.y=lockY();prop('mail',0,0,'pop',3.5,'hand');moveTo(W/2,lockY(),1.3,'walk',()=>{bot.play('wave');say('You\'ve got a message!');});},
+ call(){setScreen('lock');prop('call',0,0,'pop',3,'hand');bot.play('nod');bot.setEmotion('surprised',2);say('You missed a call!');},
+ juggle(){setScreen('lock');for(let k=0;k<3;k++)later(k*.35,()=>prop('mail',P.x+(k-1)*34,P.y-hPx()-30-k*8,'float',2.2));bot.play('shrug');bot.setEmotion('dizzy',2.4);say('So… many… notifications!');},
+ meeting(){setScreen('home');prop('clock',0,0,'pop',3,'side');bot.play('nod');bot.setEmotion('surprised',2);say('Meeting in 5 minutes!');},
+ pet(){setScreen('home');bot.play('giggle');bot.setEmotion('love',3);prop('heart',P.x-28,P.y-hPx(),'float');later(.4,()=>prop('heart',P.x+28,P.y-hPx()-10,'float'));say('Purrrr…',2);},
+ breathe(){setScreen('home');bot.setEmotion('sleepy',5);say('Breathe in…',2);later(2.4,()=>say('…and out.',2));const h=bot.heartM;let k=0;const iv=setInterval(()=>{k+=.1;h.scale.setScalar(.12*(1+.9*Math.sin(k)**2));if(k>Math.PI*2){clearInterval(iv);}},60);}
+};
+function hPx(){return HF*base;}
+window.__blinkDemo=demo;
+function demo(key,title){const f=DEMOS[key];if(!f)return;reset();if(screenEl.classList.contains('home')&&!['wake','unlock','morning','bedtime','sleep','charge','message','call','juggle','surprised'].includes(key)){/* stay */}
+  P.x=Math.min(Math.max(P.x,40),W-40);if(!P.tw)P.y=['wake','unlock','morning','bedtime','sleep','charge','message','call','juggle','surprised'].includes(key)?lockY():homeY();
+  label.textContent='Preview: '+title;f();}
+// quick buttons
+const QUICK=[['wake','Screen on'],['unlock','Unlock'],['swipe','Swipe page'],['charge','Plug in'],['shake','Shake'],['message','Message'],['bedtime','Bedtime']];
+for(const [k,l] of QUICK){const b=document.createElement('button');b.className='mini';b.type='button';b.textContent=l;b.addEventListener('click',()=>demo(k,l));$('#quickDemos').appendChild(b);}
+
+let visible=true;if('IntersectionObserver'in window)new IntersectionObserver(es=>{visible=es[0].isIntersecting;},{rootMargin:'60px'}).observe(phone);
+let last=performance.now(),acc=0,idleAt=6;
+function frame(now){requestAnimationFrame(frame);const raw=Math.min(.1,(now-last)/1000);last=now;acc+=raw;if(acc<1/30)return;const dt=Math.min(.1,acc);acc=0;T+=dt;
+  if(timers.length){const due=timers.filter(t=>t.at<=T);timers=timers.filter(t=>t.at>T);for(const t of due)if(t.my===seq){try{t.fn();}catch(e){console.error(e);}}}
+  if(!visible)return;
+  let fly=0,tiltT=0;
+  if(P.tw){const w=P.tw;w.t+=dt;const p=Math.min(1,w.t/w.d),e=p<.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+    P.x=w.x0+(w.x1-w.x0)*(w.mode==='walk'?p:e);P.y=w.y0+(w.y1-w.y0)*e-(w.mode==='hop'?Math.sin(p*Math.PI)*60:0);
+    const dx=Math.sign(w.x1-w.x0);P.face=dx*.9;bot.walk=w.mode==='walk'?1:0;fly=w.mode==='fly'?1:0;tiltT=w.mode==='fly'?-dx*.25:0;
+    if(p>=1){P.tw=null;bot.walk=0;P.face=0;w.then&&w.then();}}
+  else{bot.walk=0;P.face=0;}
+  bot.fly+=(fly-bot.fly)*Math.min(1,dt*6);P.tilt+=(tiltT-P.tilt)*Math.min(1,dt*6);
+  P.vanish+=(P.vanishT-P.vanish)*Math.min(1,dt*7);
+  bot.group.rotation.y+=(P.face-bot.group.rotation.y)*Math.min(1,dt*8);bot.group.rotation.z=P.tilt;
+  bot.group.scale.setScalar(Math.max(.001,base*P.vanish));bot.group.position.set(P.x,H-P.y,0);
+  bot.update(dt);renderer.render(scene,cam);
+  const top=P.y-hPx();
+  for(const d of propsEl.querySelectorAll('[data-follow]')){const f=d.dataset.follow;let x=P.x,y=top-20;if(f==='hand'){x=P.x+base*1.1;y=P.y-hPx()*.45;}else if(f==='side'){x=P.x-base*1.6;y=P.y-hPx()*.7;}else if(f==='head'){x=P.x;y=top+hPx()*.22;}else if(f==='sign'){x=P.x-d.offsetWidth/2;y=top-d.offsetHeight-8;d.style.transform=`translate(${x}px,${y}px)`;continue;}d.style.transform=`translate(${x-20}px,${y-20}px)`;}
+  const c=propsEl.querySelector('.cable');if(c){c.style.left=(P.x+base*.55)+'px';c.style.height=Math.max(0,H-P.y+hPx()*.35)+'px';c.style.bottom='0';}
+  if(dbub.classList.contains('on')){if(T>say.until)dbub.classList.remove('on');const bw=dbub.offsetWidth,bh=dbub.offsetHeight;dbub.style.transform=`translate(${Math.min(Math.max(P.x-bw/2,10),W-bw-10)}px,${Math.max(top-bh-(propsEl.querySelector('.sign')?44:10),40)}px)`;}
+  if(T>idleAt&&!P.tw&&!bot.action&&!timers.length){idleAt=T+8;bot.play(['wave','giggle','nod'][Math.floor(Math.random()*3)]);}
+}
+requestAnimationFrame(frame);
+setTimeout(()=>demo('unlock','Unlock hello'),900);
+})();
+</script>

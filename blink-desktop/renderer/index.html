@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:">
+<title>Blink</title>
+<style>
+  html,body{margin:0;height:100%;background:transparent;overflow:hidden;user-select:none;font-family:"Segoe UI",system-ui,sans-serif}
+  #c{position:fixed;inset:0;width:100%;height:100%;display:block;transition:opacity .45s}
+  .bubble.list{max-width:360px;font-size:12.5px;white-space:pre;font-family:Consolas,"Segoe UI",monospace}
+  .bubble{position:fixed;left:0;top:0;max-width:240px;background:#fff;color:#2a1d40;border:2px solid #f3c6dc;padding:8px 13px;border-radius:16px;font-size:13.5px;line-height:1.35;box-shadow:0 6px 18px rgba(40,20,70,.22);pointer-events:none;opacity:0;transition:opacity .2s}
+  .bubble.on{opacity:1}
+  .bubble::after{content:"";position:absolute;left:22px;bottom:-8px;width:12px;height:12px;background:#fff;border-right:2px solid #f3c6dc;border-bottom:2px solid #f3c6dc;transform:rotate(45deg)}
+  #palette{position:fixed;left:0;top:0;width:300px;background:#fff;border:2px solid #f3c6dc;border-radius:16px;padding:10px;box-shadow:0 10px 30px rgba(40,20,70,.28);display:grid;gap:6px}
+  #palette[hidden]{display:none}
+  #palette input{font:inherit;font-size:14px;padding:9px 12px;border-radius:11px;border:1.5px solid #d9c9ea;outline:none;color:#2a1d40}
+  #palette input:focus{border-color:#e2468c}
+  #palette small{font-size:11.5px;color:#7a6c90}
+</style>
+</head>
+<body>
+  <canvas id="c"></canvas>
+  <div id="bubble" class="bubble"></div>
+  <div id="palette" hidden>
+    <input id="cmd" placeholder="Ask Blink: dance, wear the kitty, joke…" autocomplete="off" spellcheck="false">
+    <small>Enter to send · Esc to close · try "help"</small>
+  </div>
+  <script src="../node_modules/three/build/three.min.js"></script>
+  <script src="blink.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
