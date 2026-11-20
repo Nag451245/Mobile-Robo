@@ -182,6 +182,9 @@ final class Assistant {
         // A plain "hi" or "good morning" gets an instant reply that fits the time of day.
         String[] greet = DayTime.greet(text, DayTime.hour(), DayTime.minute(), rnd);
         if (greet != null) { Log.i(TAG, "\"" + text + "\" => greeting"); main.post(() -> reply(host, greet[0], greet[1], greet[2])); return; }
+        // Simple sums are worked out exactly instead of guessed by the chat brain.
+        String sum = RuleBrain.math(text);
+        if (sum != null) { Log.i(TAG, "\"" + text + "\" => math"); main.post(() -> reply(host, sum, "nod", "happy")); return; }
         host.cue("nod", "curious");
         worker.execute(() -> {
             Call call = null;

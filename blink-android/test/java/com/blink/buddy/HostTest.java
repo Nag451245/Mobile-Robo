@@ -138,6 +138,15 @@ public class HostTest {
         wake("", null);
 
         dayTime();
+        String[][] sums = {{"What is 7 plus 5?", "7 plus 5 is 12!"}, {"what's seven times eight", "7 times 8 is 56!"}, {"Hey Sweety, 100 divided by 4", "100 divided by 4 is 25!"},
+            {"twenty five minus thirty", "25 minus 30 is -5!"}, {"what is 10 divided by 0", "zero"}, {"What is 1.5 plus 2", "1.5 plus 2 is 3.5!"},
+            {"What is the capital of France?", null}, {"Call mom and dad", null}, {"remind me in 10 minutes", null}};
+        for (String[] t : sums) {
+            String got = RuleBrain.math(t[0]);
+            boolean ok = t[1] == null ? got == null : got != null && got.contains(t[1]);
+            if (!ok) fails++;
+            System.out.println((ok ? "ok    " : "FAIL  ") + "math [" + t[0] + "] -> " + got + (ok ? "" : "   expected " + t[1]));
+        }
 
         route("are you dumb?", "sweety_fun", .95f, "chat");
         route("are you dumb?", null, 0, "chat");

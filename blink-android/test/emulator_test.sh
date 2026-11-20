@@ -88,7 +88,13 @@ if setup "$APK_X86" false; then
   note "phase A: x86_64 build installed"
   sleep 5
   ask "What is the capital of France?" "paris" 600
-  ask "What is 7 plus 5?" "12|twelve" 300
+  ask "What colour is the sky?" "blue" 300
+  # Sums are worked out exactly, not left to the chat brain.
+  from=$(lines)
+  adb shell am start -n $PKG/.TalkActivity --es ask "'What is 7 plus 5?'" >/dev/null 2>&1
+  if wait_for "$from" "Sweety .*reply \[" 60 && found "$from" "Sweety .*reply \[" | grep -q "7 plus 5 is 12"; then pass "\"What is 7 plus 5?\" -> $(found "$from" "Sweety .*reply \[")"
+  else fail "\"What is 7 plus 5?\" -> $(found "$from" "Sweety .*reply \[")"; fi
+  sleep 4
   ask "Are you dumb?" "[a-z]" 300
   ask "Tell me about the moon." "moon|earth|night|sky|space|orbit|light" 300
   SOFT=1 ask "Why do cats purr?" "cat|purr|happy|content|relax|vibrat" 300 # harder fact for a tiny model: reported, not required

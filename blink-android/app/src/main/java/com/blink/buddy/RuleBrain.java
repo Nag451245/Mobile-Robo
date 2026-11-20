@@ -148,6 +148,40 @@ final class RuleBrain {
         return Pattern.compile("\\b(" + k + ")\\b", Pattern.CASE_INSENSITIVE).matcher(text).find();
     }
 
+    private static final String[] SMALL = {"zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve",
+        "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"};
+    private static final String[] TENS = {"", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"};
+    private static final Pattern MATH = Pattern.compile(
+        "(?:what(?:'s| is)|how much is|calculate|tell me)?\\s*(-?\\d+(?:\\.\\d+)?)\\s*(plus|\\+|and|minus|-|less|times|x|\\*|multiplied by|into|divided by|over|/)\\s*(-?\\d+(?:\\.\\d+)?)\\s*\\??");
+
+    /** Simple sums are worked out exactly (the small chat brain sometimes guesses): "what is 7 plus 5" -> "7 plus 5 is 12!". */
+    static String math(String raw) {
+        String s = raw.toLowerCase(Locale.ROOT).replaceAll("[?!,.](?!\\d)", " ").replaceAll("\\s+", " ").trim();
+        s = s.replaceFirst("^(hey |hi |ok |okay )?(sweety|sweetie)\\s*", "");
+        for (int t = 9; t >= 2; t--) for (int u = 9; u >= 1; u--) s = s.replaceAll("\\b" + TENS[t] + "[ -]" + SMALL[u] + "\\b", String.valueOf(t * 10 + u));
+        for (int t = 9; t >= 2; t--) s = s.replaceAll("\\b" + TENS[t] + "\\b", String.valueOf(t * 10));
+        for (int i = SMALL.length - 1; i >= 0; i--) s = s.replaceAll("\\b" + SMALL[i] + "\\b", String.valueOf(i));
+        s = s.replaceAll("\\bhundred\\b", "100");
+        Matcher m = MATH.matcher(s);
+        if (!m.matches()) return null;
+        double a = Double.parseDouble(m.group(1)), b = Double.parseDouble(m.group(3));
+        String op = m.group(2), word;
+        double r;
+        if (op.matches("plus|\\+|and")) { r = a + b; word = "plus"; }
+        else if (op.matches("minus|-|less")) { r = a - b; word = "minus"; }
+        else if (op.matches("times|x|\\*|multiplied by|into")) { r = a * b; word = "times"; }
+        else {
+            if (b == 0) return "Dividing by zero? Even robots can't do that! Hehe.";
+            r = a / b; word = "divided by";
+        }
+        return num(a) + " " + word + " " + num(b) + " is " + num(r) + "! Easy peasy robot math.";
+    }
+
+    private static String num(double v) {
+        if (Math.abs(v - Math.rint(v)) < 1e-9) return String.valueOf((long) Math.rint(v));
+        return String.format(Locale.ROOT, "%.2f", v).replaceAll("0+$", "").replaceAll("\\.$", "");
+    }
+
     /** Everyday mishearings from offline speech-to-text: "what tim is it" -> "what time is it". */
     static String misheard(String s) {
         return s.replaceAll("\\b(what|the) (tim|tam|thyme|tine)\\b", "$1 time").replaceAll("\\b(tim|tam|thyme|tine) (is it|now|please)\\b", "time $2")
