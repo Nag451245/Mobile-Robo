@@ -27,7 +27,7 @@ import android.widget.TextView;
 public class TalkActivity extends Activity implements Assistant.Host, Ears.Callback {
     private static final int REQ_MIC = 11, REQ_CONTACT = 12;
     private final Handler h = new Handler(Looper.getMainLooper());
-    private Ears ears;
+    private Hearing ears;
     private TextView status, heard;
     private TextView mic;
     private Assistant.NumberCallback contactCb;
@@ -69,7 +69,7 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
         root.addView(card, cp);
         setContentView(root);
 
-        ears = new Ears(this, this);
+        ears = new Hearing(this, this);
         status.setText("Listening… try \"remind me in 10 minutes to drink water\"");
         startListening();
     }

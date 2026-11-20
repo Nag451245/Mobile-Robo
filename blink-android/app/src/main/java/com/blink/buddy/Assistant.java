@@ -70,7 +70,21 @@ final class Assistant {
         worker.execute(() -> needle.ensure(app));
     }
 
-    String brainStatus() { return NeedleNative.LOADED ? "Needle 2: " + needle.status : "Needle 2 not available on this phone, using built-in rules"; }
+    String brainStatus() { return needle.status; }
+
+    /** True when Whistle is loaded, so Sweety can hear fully offline. */
+    boolean localHearing() { return needle.speechReady(); }
+
+    interface TextCallback { void onText(String text); }
+
+    /** Offline speech to text with Whistle, on the brain's worker thread; the callback runs on the main thread. */
+    void transcribe(float[] pcm, TextCallback cb) {
+        worker.execute(() -> {
+            needle.ensure(app);
+            String text = needle.transcribe(pcm);
+            main.post(() -> cb.onText(text));
+        });
+    }
 
     boolean voiceOn() { return prefs.getBoolean("voice", true); }
     void setVoiceOn(boolean on) { prefs.edit().putBoolean("voice", on).apply(); if (!on) stopTalking(); }
@@ -89,7 +103,8 @@ final class Assistant {
         worker.execute(() -> {
             Call call = null;
             Call ruled = rules.parse(text);
-            if (needle.ensure(app)) {
+            needle.ensure(app);
+            if (needle.textReady()) {
                 try { call = needle.parse(text); } catch (Throwable ignored) { }
             }
             // Trust Needle when it is confident; otherwise fall back to the rules.

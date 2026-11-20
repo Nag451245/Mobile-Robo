@@ -35,17 +35,19 @@ jobs:
           path: ~/.android/debug.keystore
           key: blink-debug-keystore-v1
 
-      # Sweety's brain: Needle 2 by Cactus Compute (Apache-2.0), https://huggingface.co/Cactus-Compute/needle2
-      - name: Fetch Needle 2
+      # Sweety's offline brain, all by Cactus Compute (Apache-2.0):
+      # Cactus 4 runtime + Needle 3 (understands requests, calls tools) + Whistle (speech to text).
+      - name: Fetch Cactus runtime, Needle 3 and Whistle
         working-directory: blink-android/app
         run: |
-          base=https://huggingface.co/Cactus-Compute/needle2/resolve/main
-          mkdir -p needle/arm64-v8a src/main/assets
-          curl -fsSL --retry 3 -o needle/arm64-v8a/libneedle.a "$base/android-arm64/libneedle.a"
-          curl -fsSL --retry 3 -o needle/arm64-v8a/needle.h "$base/android-arm64/needle.h"
-          curl -fsSL --retry 3 -o src/main/assets/needle2.cact "$base/needle2.cact"
-          curl -fsSL --retry 3 -o src/main/assets/NEEDLE_LICENSE.txt "$base/LICENSE"
-          ls -la needle/arm64-v8a src/main/assets
+          hf=https://huggingface.co/Cactus-Compute
+          mkdir -p cactus/arm64-v8a src/main/assets
+          curl -fsSL --retry 3 -o cactus/arm64-v8a/libcactus.a "$hf/cactus/resolve/main/releases/4.1.4/android-arm64/libcactus.a"
+          curl -fsSL --retry 3 -o cactus/arm64-v8a/cactus.h "$hf/cactus/resolve/main/releases/4.1.4/android-arm64/cactus.h"
+          curl -fsSL --retry 3 -o src/main/assets/needle3.cact "$hf/needle3/resolve/main/needle3.cact"
+          curl -fsSL --retry 3 -o src/main/assets/whistle.cact "$hf/whistle/resolve/main/whistle.cact"
+          curl -fsSL --retry 3 -o src/main/assets/CACTUS_LICENSE.txt "$hf/needle3/resolve/main/LICENSE"
+          ls -la cactus/arm64-v8a src/main/assets
 
       - name: Build the APK
         working-directory: blink-android
@@ -79,6 +81,6 @@ jobs:
 
             **Phone (Android 8+, 64-bit):** open this page on your phone in Chrome, tap `Sweety.apk`, allow "Install unknown apps" for Chrome when asked, then open Sweety. If Play Protect says "Unsafe app blocked", tap More details > Install anyway.
 
-            Sweety's offline brain is [Needle 2](https://huggingface.co/Cactus-Compute/needle2) by Cactus Compute (Apache-2.0).
+            Sweety's offline brain is [Needle 3](https://huggingface.co/Cactus-Compute/needle3) and [Whistle](https://huggingface.co/Cactus-Compute/whistle) on the [Cactus runtime](https://huggingface.co/Cactus-Compute/cactus) by Cactus Compute (Apache-2.0).
 
             **Windows:** download `Blink-portable-win64.zip`, unzip anywhere and run `Blink.exe`. No installer or admin rights needed.

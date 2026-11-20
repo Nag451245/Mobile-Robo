@@ -1,6 +1,6 @@
 # Sweety
 
-A cute 3D robot helper with big sparkly eyes. On your phone she lives in a nature scene that matches her outfit, floats on top of your apps, listens when you talk, answers out loud, and gets things done: alarms, reminders, calls, messages, the torch, music and more. Her offline brain is [Needle 2](https://huggingface.co/Cactus-Compute/needle2) by Cactus Compute.
+A cute 3D robot helper with big sparkly eyes. On your phone she lives in a nature scene that matches her outfit, floats on top of your apps, listens when you talk, answers out loud, and gets things done: alarms, reminders, calls, messages, the torch, music and more. Everything runs offline on the phone: [Needle 3](https://huggingface.co/Cactus-Compute/needle3) understands what you ask, [Whistle](https://huggingface.co/Cactus-Compute/whistle) hears you, and the phone speaks her replies. No cloud and no API key.
 
 | Where | Folder | What it is | Get it |
 |---|---|---|---|
@@ -27,7 +27,7 @@ Calls and messages always open your dialer or messaging app with everything fill
 
 Permissions: microphone (only while the talk window is open), display over other apps, notifications for the floating service, and setting alarms. No SMS, notification, contacts or accessibility access.
 
-Needs Android 8 or later on a 64-bit phone. Speech recognition uses the phone's own speech service.
+Needs Android 8 or later on a 64-bit phone. Hearing (Whistle) supports English, German, French, Spanish, Italian, Dutch and Polish; if it can't load, Sweety falls back to the phone's speech service.
 
 ## Windows: run without installing
 
@@ -39,4 +39,4 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
 
 ## Credits
 
-Sweety's offline brain: [Needle 2](https://huggingface.co/Cactus-Compute/needle2) by Cactus Compute, Apache-2.0. The build downloads it automatically; it is not stored in this repo.
+Sweety's offline brain: [Cactus runtime](https://huggingface.co/Cactus-Compute/cactus), [Needle 3](https://huggingface.co/Cactus-Compute/needle3) and [Whistle](https://huggingface.co/Cactus-Compute/whistle) by Cactus Compute, Apache-2.0. The build downloads them automatically; they are not stored in this repo.

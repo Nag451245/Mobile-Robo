@@ -35,7 +35,7 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
     private float dp;
     private SharedPreferences prefs;
     private BlinkView preview;
-    private Ears ears;
+    private Hearing ears;
     private TextView micBtn, reply, heardText;
     private Assistant.NumberCallback contactCb;
 
@@ -97,7 +97,7 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         talk.addView(brain);
         LinearLayout.LayoutParams tlp = full(px(14));
         col.addView(talk, tlp);
-        ears = new Ears(this, this);
+        ears = new Hearing(this, this);
         preview.postDelayed(() -> brain.setText(Assistant.get(this).brainStatus()), 4000);
 
         col.addView(header("Floating Sweety (like the desktop version)"));
