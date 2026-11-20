@@ -12,7 +12,7 @@ import java.util.regex.Pattern;
  */
 final class WakePhrase {
     private static final Pattern WORD = Pattern.compile("[a-z']+");
-    private static final String[] GREETINGS = {"hey", "hay", "hei", "hai", "hi", "hello", "hallo", "ok", "okay", "oh", "o", "yo", "he", "heh", "hiya", "ay", "eh",
+    private static final String[] GREETINGS = {"hey", "hay", "hei", "hai", "hi", "hello", "hellow", "helo", "hallo", "ok", "okay", "oh", "o", "yo", "he", "heh", "hiya", "ay", "eh",
         "i", "ah", "aye", "high", "hie", "his", "hes", "he's", "hase", "haze", "hays", "hay's", "hey's", "heys", "hies"};
     /** Greetings Whistle wrote with the "s" of "Sweety" stuck on ("hey sweety" -> "his weedy", "hase witty"). */
     private static final String[] S_GREETINGS = {"his", "hes", "he's", "hase", "haze", "hays", "hay's", "hey's", "heys", "hies"};
@@ -81,7 +81,7 @@ final class WakePhrase {
     }
 
     private static boolean exact(String w) {
-        return w.matches("swee?[td](y|ie|ey|i|ee|ty|tie|ies|ys|ii|dy|die)|sweaty|swetty|swety|sweti|sweeti|sweetee|suit(e)?y|switty|sweety's|sweetie's");
+        return w.matches("swee?[td](y|ie|ey|i|ee|ty|tie|ies|ys|ii|dy|die)|sweaty|swetty|swety|swity|switty|sweti|sweeti|sweetee|suit(e)?y|switty|sweety's|sweetie's");
     }
 
     /** Sound skeleton: first letter kept, vowels and h dropped, doubles merged. "swathi" -> "swt", "sweety" -> "swt". */
