@@ -74,8 +74,10 @@ frozen() { # frozen <from-line> <label>: Sweety must never stop responding
   if tail -n +"$1" "$LOG" | grep -qE "ANR in $PKG"; then
     fail "$2: Sweety froze (ANR): $(tail -n +"$1" "$LOG" | grep -A6 "ANR in $PKG" | grep -E "Reason|ANR in" | head -3 | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"
   else pass "$2: no freezes"; fi
-  tail -n +"$1" "$LOG" | grep -E "FATAL EXCEPTION|Fatal signal" -A4 | head -12 > "$OUT/crash.txt"
-  [ -s "$OUT/crash.txt" ] && fail "$2: crash: $(head -6 "$OUT/crash.txt" | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"
+  # Java crashes, and native crashes with the first frames of their backtrace (which library, which function).
+  { tail -n +"$1" "$LOG" | grep -E "FATAL EXCEPTION" -A6 | head -14
+    tail -n +"$1" "$LOG" | grep -E "Fatal signal|F/DEBUG.*(Abort message|signal [0-9]|#0[0-9] pc|#1[0-5] pc|name: )" | head -24; } > "$OUT/crash.txt"
+  [ -s "$OUT/crash.txt" ] && fail "$2: crash: $(sed -E 's/^.{0,40}\): *//' "$OUT/crash.txt" | sed -E 's/\/data\/app\/[^ ]*\/lib\//lib\//' | tr '\n' '|')"
   local died; died=$(tail -n +"$1" "$LOG" | grep -E "Process $PKG .*has died|Killing [0-9]+:$PKG" | grep -vc "deletePackage")
   [ "$died" -gt 0 ] && note "$2: Android stopped the Sweety process $died time(s): $(tail -n +"$1" "$LOG" | grep -E "Process $PKG .*has died|Killing [0-9]+:$PKG" | head -2 | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"
 }
