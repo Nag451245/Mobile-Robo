@@ -239,7 +239,7 @@ jobs:
         if: always()
         run: |
           bash blink-android/test/annotate.sh notice "api${{ matrix.api }} summary" emu-out/summary.txt 8000
-          grep -E "/Sweety|FATAL|AndroidRuntime|litert" emu-out/logcat.txt | grep -v "mic: loudest" > emu-out/sweety-log.txt || true
+          grep -E "/Sweety|FATAL|AndroidRuntime" emu-out/logcat.txt | grep -vE "mic: loudest|needle3: " > emu-out/sweety-log.txt || true
           bash blink-android/test/annotate.sh notice "api${{ matrix.api }} sweety log" emu-out/sweety-log.txt 12000
 
       - uses: actions/upload-artifact@v4

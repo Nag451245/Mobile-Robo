@@ -40,6 +40,13 @@ final class NeedleBrain {
             }
             status = (textReady ? "Needle 3: ready" : "Needle 3: not loaded (" + CactusNative.lastError() + ")")
                 + " · " + (speechReady ? "Whistle: ready, hearing works offline" : "Whistle: not loaded, using the phone's speech service");
+            if (speechReady) {
+                // Warm-up: Whistle's first transcription is much slower than the rest, so do it now on half a second
+                // of silence instead of on the user's first "Hey Sweety".
+                long t0 = System.currentTimeMillis();
+                try { CactusNative.transcribe(new float[8000], "en", Assistant.KEYWORDS); } catch (Throwable ignored) { }
+                Log.i(TAG, "Whistle warmed up in " + (System.currentTimeMillis() - t0) + " ms");
+            }
         } catch (Throwable t) {
             Log.w(TAG, "brain failed to start", t);
             status = "Offline brain error: " + t.getClass().getSimpleName() + ", using built-in rules";
