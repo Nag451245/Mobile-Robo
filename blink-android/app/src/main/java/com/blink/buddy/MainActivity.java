@@ -82,7 +82,7 @@ public class MainActivity extends Activity {
 
         col.addView(header("Try a moment"));
         String[][] sims = {{"screen", "Screen on"}, {"unlock", "Unlock"}, {"missed", "Missed you"}, {"swipe", "Swipe page"}, {"charge", "Plug in"},
-                {"lowbat", "Low battery"}, {"music", "Headphones"}, {"shake", "Shake"}, {"mail", "Message"}, {"outfit", "New outfit"}, {"nudge", "30 min nudge"}};
+                {"lowbat", "Low battery"}, {"music", "Headphones"}, {"shake", "Shake"}, {"outfit", "New outfit"}, {"nudge", "30 min nudge"}};
         col.addView(chipRow(sims, id -> preview.blink.simulate(id)));
         col.addView(text("You can also tap, double-tap and stroke Blink in the preview.", 13, false));
 
@@ -103,13 +103,6 @@ public class MainActivity extends Activity {
             col.addView(cb);
         }
 
-        Button notif = button("Allow notification access (for Mail carrier)", false);
-        notif.setOnClickListener(v -> {
-            try { startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)); }
-            catch (ActivityNotFoundException e) { toast("Open Settings > Notifications > Notification access and allow Blink."); }
-        });
-        col.addView(notif, full(px(16)));
-        col.addView(text("Blink only notices that something arrived. It never reads who sent it or what it says.", 13, false));
 
         ScrollView scroll = new ScrollView(this);
         scroll.addView(col);

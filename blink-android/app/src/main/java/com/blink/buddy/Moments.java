@@ -18,7 +18,6 @@ final class Moments {
         {"low-battery", "Low battery yawn", "Below 15% Blink gets slow and sleepy."},
         {"headphones", "Headphone groove", "Headphones connected: Blink puts on its own and grooves."},
         {"shake", "Shake it", "Shake the phone to bounce Blink around."},
-        {"mail", "Mail carrier", "A notification arrives: Blink brings an envelope. Needs notification access; it never reads them."},
         {"pet", "Pet and purr", "Stroke Blink with your finger for heart eyes."},
         {"outfit-day", "Outfit of the day", "A new outfit every day. Double-tap Blink to change it yourself."},
         {"break", "Screen-time nudge", "After 30 minutes unlocked, Blink suggests a stretch."}
