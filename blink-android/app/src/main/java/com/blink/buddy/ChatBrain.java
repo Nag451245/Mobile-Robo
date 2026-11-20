@@ -165,9 +165,9 @@ final class ChatBrain {
         String persona = PERSONA + " " + DayTime.chatContext(java.util.Calendar.getInstance());
         if ("full".equals(mode)) {
             try {
-                // A little randomness (temperature 0.8) keeps her lively instead of repeating the same safe line.
+                // A little randomness (temperature 0.6) keeps her lively without wandering off the question.
                 conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(persona), examples(),
-                    Collections.emptyList(), new SamplerConfig(40, 0.95, 0.8, (int) (System.nanoTime() & 0x7fffffff))));
+                    Collections.emptyList(), new SamplerConfig(40, 0.9, 0.6, (int) (System.nanoTime() & 0x7fffffff))));
                 return;
             } catch (Throwable t) {
                 Log.w(TAG, "full chat setup failed, using the plain one", t);

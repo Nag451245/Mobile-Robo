@@ -75,7 +75,7 @@ frozen() { # frozen <from-line> <label>: Sweety must never stop responding
   else pass "$2: no freezes"; fi
   tail -n +"$1" "$LOG" | grep -E "FATAL EXCEPTION|Fatal signal" -A4 | head -12 > "$OUT/crash.txt"
   [ -s "$OUT/crash.txt" ] && fail "$2: crash: $(head -6 "$OUT/crash.txt" | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"
-  local died; died=$(tail -n +"$1" "$LOG" | grep -cE "Process $PKG .*has died|Killing [0-9]+:$PKG")
+  local died; died=$(tail -n +"$1" "$LOG" | grep -E "Process $PKG .*has died|Killing [0-9]+:$PKG" | grep -vc "deletePackage")
   [ "$died" -gt 0 ] && note "$2: Android stopped the Sweety process $died time(s): $(tail -n +"$1" "$LOG" | grep -E "Process $PKG .*has died|Killing [0-9]+:$PKG" | head -2 | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"
 }
 
@@ -92,7 +92,7 @@ if setup "$APK_X86" false; then
   # Time of day: set the phone clock and check her greeting changes with it.
   adb shell settings put global auto_time 0 >/dev/null 2>&1
   timed_hi() { # timed_hi <MMDDhhmm> <label> <what she says> <regex>
-    adb shell date "$1"2026.00 >/dev/null 2>&1
+    adb shell date "$1"2026.00 >/dev/null 2>&1 # only ever forward: logcat hides lines stamped earlier than the last one
     local from; from=$(lines)
     adb shell am start -n $PKG/.TalkActivity --es ask "" >/dev/null 2>&1
     if wait_for "$from" "Sweety .*reply \[" 60; then
@@ -101,12 +101,11 @@ if setup "$APK_X86" false; then
     else fail "$2: no reply to \"$3\""; fi
     sleep 4
   }
-  timed_hi 11200130 "at 1:30 AM" "Hi Sweety" "awake|late"
-  timed_hi 11200815 "at 8:15 AM" "Good morning" "stretch.*morning"
-  timed_hi 11202310 "at 11:10 PM" "Good morning" "night|silly"
-  timed_hi 11202240 "at 10:40 PM" "Good night" "sleep.*(dream|night)"
-  timed_hi 11200140 "at 1:40 AM" "Dance for me" "dance/sleepy.*(midnight|quiet|neighbours)"
-  adb shell settings put global auto_time 1 >/dev/null 2>&1
+  timed_hi 11210130 "at 1:30 AM" "Hi Sweety" "awake|late"
+  timed_hi 11210140 "at 1:40 AM" "Dance for me" "dance/sleepy.*(midnight|quiet|neighbours)"
+  timed_hi 11210815 "at 8:15 AM" "Good morning" "stretch.*morning"
+  timed_hi 11212240 "at 10:40 PM" "Good night" "sleep.*(dream|night)"
+  timed_hi 11212310 "at 11:10 PM" "Good morning" "night|silly"
   found "$A" "SweetyChat.*ready in" | sed 's/^/      /' | tee -a "$SUM"
   adb exec-out screencap -p > "$OUT/A-chat.png"
   frozen "$A" "phase A"
@@ -116,7 +115,9 @@ else fail "could not install the x86_64 build"; fi
 B=$(lines)
 if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
   note "phase B: arm64 phone build installed (runs under ARM translation, so it's slow)"
-  sleep 25
+  # Let the chat brain finish loading first (slow under ARM translation), as it would long before you speak on a phone.
+  wait_for "$B" "SweetyChat.*(ready in|chat engine failed)" 900 && note "phase B: $(found "$B" "SweetyChat.*(ready in|chat engine failed)")"
+  sleep 5
   adb exec-out screencap -p > "$OUT/B-app.png"
   adb shell dumpsys activity services $PKG | grep -q WakeService && pass "Hey Sweety listener is running" || fail "Hey Sweety listener did not start"
 
