@@ -22,7 +22,7 @@ import java.util.Random;
  * Hosted by the live wallpaper engine (home + lock screen) and by the preview view in the app.
  */
 final class Blink {
-    static final int ROOTY = 0, SPIN = 1, SX = 2, SY = 3, BODY = 4, HX = 5, HY = 6, HZ = 7, AL = 8, AR = 9, ALX = 10, ARX = 11;
+    static final int ROOTY = 0, SPIN = 1, SX = 2, SY = 3, BODY = 4, HX = 5, HY = 6, HZ = 7, AL = 8, AR = 9, ALX = 10, ARX = 11, ROLL = 12, RX = 13;
     static final int GROUND = 0, FLY = 1, HOVER = 2, FALL = 3;
     private static final float TAU = (float) (Math.PI * 2);
 
@@ -48,8 +48,8 @@ final class Blink {
 
     // pose and expression
     float face, tilt, vanish = 1, heartPulse = 1, walk, fly, t, open = 1, lookX, lookY;
-    final float[] cur = {0, 0, 1, 1, .72f, 0, 0, 0, -.2f, .2f, 0, 0};
-    private final float[] tg = new float[12];
+    final float[] cur = {0, 0, 1, 1, .72f, 0, 0, 0, -.2f, .2f, 0, 0, 0, 0};
+    private final float[] tg = new float[14];
     String emo = "neutral";
     private String baseEmo = "neutral", action;
     private float emoUntil = Float.MAX_VALUE, aT, aDur, blinkNext = 2, blinkT = -1, lookTX, lookTY, lookAt;
@@ -125,6 +125,7 @@ final class Blink {
     private void stopAction() {
         if ("change".equals(action) && pendingSkin != null) { applySkin(pendingSkin); pendingSkin = null; }
         if ("spin".equals(action) || "change".equals(action)) cur[SPIN] = 0;
+        cur[ROLL] = 0; cur[RX] = 0;
         action = null;
     }
 
@@ -139,7 +140,7 @@ final class Blink {
         switch (name) {
             case "wave": d = 2.4f; break; case "dance": d = 4.2f; break; case "jump": d = 1.1f; break; case "spin": d = 1.3f; break;
             case "stretch": d = 2.6f; break; case "laugh": d = 2.2f; break; case "shrug": d = 1.8f; break; case "nod": d = 1.4f; break;
-            case "giggle": d = 1.2f; break; case "change": d = 1.2f; break; default: d = 2f;
+            case "giggle": d = 1.2f; break; case "change": d = 1.2f; break; case "flip": d = 1.3f; break; case "cartwheel": d = 1.7f; break; default: d = 2f;
         }
         play(name, d);
     }
@@ -584,7 +585,7 @@ final class Blink {
         if (sleeping && emoUntil == Float.MAX_VALUE) emo = "sleep";
         float br = sin(t * 2.2f);
         float[] T = tg;
-        T[ROOTY] = 0; T[SPIN] = 0; T[SX] = 1; T[SY] = 1; T[BODY] = .72f + br * .022f;
+        T[ROOTY] = 0; T[SPIN] = 0; T[ROLL] = 0; T[RX] = 0; T[SX] = 1; T[SY] = 1; T[BODY] = .72f + br * .022f;
         T[HX] = -lookY * .2f; T[HY] = lookX * .42f; T[HZ] = sin(t * .9f) * .05f;
         T[AL] = -.2f - br * .05f; T[AR] = .2f + br * .05f; T[ALX] = 0; T[ARX] = 0;
         if (walk > 0) { float s = t * 11 * Math.min(2, speedMul); T[ROOTY] += Math.abs(sin(s)) * .08f * walk; T[ALX] = sin(s) * .7f * walk; T[ARX] = -sin(s) * .7f * walk; T[HZ] += sin(s) * .06f * walk; }
@@ -615,16 +616,25 @@ final class Blink {
                 case "shrug": { float kk = sin(p * Math.PI); T[AL] = -.2f - kk * .9f; T[AR] = .2f + kk * .9f; T[ALX] = -kk * .6f; T[ARX] = -kk * .6f; T[HZ] += kk * .25f; T[BODY] += kk * .04f; break; }
                 case "giggle": { T[ROOTY] += Math.abs(sin(a * 14)) * .12f * (1 - p); T[HZ] += sin(a * 20) * .08f * (1 - p); break; }
                 case "nod": { T[HX] = sin(p * Math.PI * 4) * .25f; break; }
+                case "flip": {
+                    if (p < .15f) { T[SY] = 1 - .2f * sin(p / .15f * Math.PI); T[SX] = 1 + (1 - T[SY]) * .6f; }
+                    else if (p < .85f) { float q = (p - .15f) / .7f; T[ROOTY] += sin(q * Math.PI) * 1.4f; T[ROLL] = -easeInOut(q) * TAU; cur[ROLL] = T[ROLL]; T[AL] = -2.4f; T[AR] = 2.4f; T[SY] = .92f; }
+                    else { float q = (p - .85f) / .15f; T[SY] = 1 - .15f * sin(q * Math.PI); T[SX] = 1 + (1 - T[SY]) * .6f; T[AL] = -1; T[AR] = 1; }
+                    break;
+                }
+                case "cartwheel": { T[ROLL] = easeInOut(p) * TAU; cur[ROLL] = T[ROLL]; T[RX] = sin(p * Math.PI) * 1.2f; T[ROOTY] += sin(p * Math.PI) * .3f; T[AL] = -2.1f; T[AR] = 2.1f; break; }
                 default: break;
             }
             if (action != null && aT >= aDur) {
                 String done = action; action = null;
                 if ("spin".equals(done) || "change".equals(done)) { cur[SPIN] -= TAU; T[SPIN] = 0; }
+                if ("flip".equals(done)) { cur[ROLL] += TAU; T[ROLL] = 0; }
+                if ("cartwheel".equals(done)) { cur[ROLL] -= TAU; T[ROLL] = 0; }
                 if ("change".equals(done) && pendingSkin != null) { applySkin(pendingSkin); pendingSkin = null; }
             }
         }
         float k = 1 - (float) Math.exp(-dt * (action != null ? 30 : 9));
-        for (int i = 0; i < 12; i++) cur[i] = lerp(cur[i], T[i], k);
+        for (int i = 0; i < 14; i++) cur[i] = lerp(cur[i], T[i], k);
 
         if (blinkT < 0 && t > blinkNext) blinkT = 0;
         open = 1;

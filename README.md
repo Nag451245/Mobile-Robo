@@ -19,8 +19,10 @@ Every push to `main` rebuilds the APK and the Windows zip with GitHub Actions an
    - "set an alarm for 7 am", "remind me in 10 minutes to drink water", "timer for 5 minutes"
    - "call mom", "text dad saying I'll be late", "send a WhatsApp to Ravi saying good morning"
    - "turn on the torch", "next song", "volume up", "what's my battery", "what time is it"
-   - "take a note buy milk", "read my notes", "dance", "tell me a joke", "wear the bunny outfit"
-4. **Hey Sweety (hands-free):** tick **Listen for "Hey Sweety"** and allow the microphone. While the screen is on and unlocked, say "Hey Sweety, set an alarm for 7 am" from any app (or just "Hey Sweety", wait for "Yes?", then ask). The mic closes when the screen turns off or locks; a notification shows while it's on.
+   - "take a note buy milk", "read my notes", "tell me a joke", "wear the bunny outfit"
+   - "dance", "do a backflip", "do a cartwheel", "giggle", "spin", "jump": she does the move with a little robot sound (or tap the **Tricks** chips). She waves back when you say hi.
+   - Pick her voice (Sweet, Squeaky, Soft or Bubbly) under **Her voice**.
+4. **Hey Sweety (hands-free):** tick **Listen for "Hey Sweety"** and allow the microphone. While the screen is on and unlocked, say "Hey Sweety, set an alarm for 7 am" from any app (or just "Hey Sweety", wait for "Yes?", then ask). The mic closes when the screen turns off or locks; a notification shows while it's on. The line under the switch shows what she's doing and the last thing she heard. Allow "don't optimise battery" when asked, or some phones stop her in the background.
 5. **Chat brain:** tap **Download chat brain (330 MB)** once, on Wi-Fi. After that Sweety really chats and answers questions offline, using [Qwen3-0.6B](https://huggingface.co/litert-community/Qwen3-0.6B-int4) on Google's [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM). Commands still go through Needle 3.
 6. Tap **Start floating Sweety** and allow **Display over other apps**. On the home screen: drag her anywhere, tap to poke, double-tap for a new outfit, **long-press to talk**.
 7. Optional: **Set Sweety as my wallpaper** (choose Home and lock screens) to see her nature scenes.

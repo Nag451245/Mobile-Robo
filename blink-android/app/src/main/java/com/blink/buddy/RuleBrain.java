@@ -97,7 +97,10 @@ final class RuleBrain {
             if (s.matches(".*\\b(wear|be a|become|change to|switch to|dress)\\b.*") && s.matches(".*\\b" + key + "\\b.*")) return new Call("sweety_fun", Call.obj("action", "outfit", "outfit", sk.id), 1, "rules");
         }
         if (s.matches(".*\\b(outfit|change clothes|new clothes|dress up)\\b.*")) return new Call("sweety_fun", Call.obj("action", "outfit"), 1, "rules");
-        if (s.matches(".*\\b(dance|party|groove)\\b.*")) return new Call("sweety_fun", Call.obj("action", "dance"), 1, "rules");
+        if (s.matches(".*\\b(danc\\w*|party|groove|boogie)\\b.*")) return new Call("sweety_fun", Call.obj("action", "dance"), 1, "rules");
+        if (s.matches(".*\\b(back ?flip|flip|somersault)\\b.*")) return new Call("sweety_fun", Call.obj("action", "flip"), 1, "rules");
+        if (s.matches(".*\\b(cart ?wheel\\w*|wheeler|wheelie|wheely)\\b.*")) return new Call("sweety_fun", Call.obj("action", "cartwheel"), 1, "rules");
+        if (s.matches("\\W*(laugh|giggle)( for me)?\\W*")) return new Call("sweety_fun", Call.obj("action", "laugh"), 1, "rules");
         if (s.matches(".*\\b(joke|funny|make me laugh)\\b.*")) return new Call("sweety_fun", Call.obj("action", "joke"), 1, "rules");
         if (s.matches(".*\\b(jump|hop)\\b.*")) return new Call("sweety_fun", Call.obj("action", "jump"), 1, "rules");
         if (s.matches(".*\\b(spin|twirl)\\b.*")) return new Call("sweety_fun", Call.obj("action", "spin"), 1, "rules");

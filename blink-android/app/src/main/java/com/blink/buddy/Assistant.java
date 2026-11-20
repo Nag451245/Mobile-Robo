@@ -69,7 +69,7 @@ final class Assistant {
         this.chatBrain = new ChatBrain(app);
         tts = new TextToSpeech(app, status -> {
             ttsReady = status == TextToSpeech.SUCCESS;
-            if (ttsReady) { tts.setPitch(1.55f); tts.setSpeechRate(1.05f); }
+            if (ttsReady) { pickCuteVoice(); applyVoiceStyle(); }
         });
         worker.execute(() -> needle.ensure(app));
     }
@@ -82,7 +82,7 @@ final class Assistant {
     void warmChat() { if (chatBrain.downloaded() && !chatBrain.ready()) chatWorker.execute(chatBrain::warm); }
 
     /** True while Sweety is speaking, so the wake-word listener doesn't hear herself. */
-    boolean talking() { return ttsReady && tts.isSpeaking(); }
+    boolean talking() { return Sounds.playing() || (ttsReady && tts.isSpeaking()); }
 
     /** True when Whistle is loaded, so Sweety can hear fully offline. */
     boolean localHearing() { return needle.speechReady(); }
@@ -101,10 +101,60 @@ final class Assistant {
     boolean voiceOn() { return prefs.getBoolean("voice", true); }
     void setVoiceOn(boolean on) { prefs.edit().putBoolean("voice", on).apply(); if (!on) stopTalking(); }
 
+    /* ------------------------------------------------------------ voice */
+    /** Voice styles: id, label, pitch, speed. */
+    static final String[][] VOICES = {
+        {"sweet", "Sweet", "1.6", "1.08"},
+        {"squeaky", "Squeaky", "1.95", "1.15"},
+        {"soft", "Soft", "1.35", "0.98"},
+        {"bubbly", "Bubbly", "1.75", "1.22"},
+    };
+
+    String voiceStyle() { return prefs.getString("voiceStyle", "sweet"); }
+
+    void setVoiceStyle(String id) { prefs.edit().putString("voiceStyle", id).apply(); applyVoiceStyle(); }
+
+    private void applyVoiceStyle() {
+        if (!ttsReady) return;
+        String id = voiceStyle();
+        for (String[] v : VOICES) if (v[0].equals(id)) { tts.setPitch(Float.parseFloat(v[2])); tts.setSpeechRate(Float.parseFloat(v[3])); return; }
+        tts.setPitch(1.6f); tts.setSpeechRate(1.08f);
+    }
+
+    /** Prefers a young-sounding female English voice that works offline (Google's voice names, then any "female" voice). */
+    private void pickCuteVoice() {
+        try {
+            java.util.Set<android.speech.tts.Voice> all = tts.getVoices();
+            if (all == null) return;
+            String[] fav = {"-x-sfg", "-x-tpf", "-x-iob", "-x-iog", "-x-tpc", "-x-ahp", "-x-cxx", "-x-ene", "-x-gba"};
+            String country = Locale.getDefault().getCountry();
+            android.speech.tts.Voice best = null;
+            int bestScore = Integer.MIN_VALUE;
+            for (android.speech.tts.Voice v : all) {
+                if (v.isNetworkConnectionRequired()) continue;
+                if (v.getFeatures() != null && v.getFeatures().contains("notInstalled")) continue;
+                Locale l = v.getLocale();
+                if (l == null || !"en".equals(l.getLanguage())) continue;
+                String n = v.getName().toLowerCase(Locale.ROOT);
+                int sc = v.getQuality() / 100;
+                if (l.getCountry().equals(country)) sc += 3; else if ("US".equals(l.getCountry())) sc += 2;
+                for (int i = 0; i < fav.length; i++) if (n.contains(fav[i])) sc += 20 - i;
+                if (n.contains("female")) sc += 15; else if (n.contains("male")) sc -= 15;
+                if (sc > bestScore) { bestScore = sc; best = v; }
+            }
+            if (best != null) tts.setVoice(best);
+        } catch (Exception ignored) { }
+    }
+
     void speak(String text) {
         if (!voiceOn() || !ttsReady || text == null) return;
-        tts.speak(text.replaceAll("[^\\p{L}\\p{N}\\p{P}\\s]", ""), TextToSpeech.QUEUE_FLUSH, null, "sweety");
+        // "hehe", "haha" read aloud sound odd, so the giggle sound plays instead.
+        String said = text.replaceAll("(?i)\\b(he ?he+|ha ?ha+|hi ?hi+|tee ?hee+)\\b[!.]?", "").replaceAll("[^\\p{L}\\p{N}\\p{P}\\s]", "").trim();
+        if (said.isEmpty()) return;
+        tts.speak(said, TextToSpeech.QUEUE_FLUSH, null, "sweety");
     }
+
+    private static boolean giggly(String text) { return text != null && text.matches("(?is).*\\b(he ?he+|ha ?ha+|hi ?hi+|tee ?hee+)\\b.*"); }
 
     void stopTalking() { if (tts != null) tts.stop(); }
 
@@ -129,6 +179,8 @@ final class Assistant {
         });
     }
 
+    private String pick(String... options) { return options[rnd.nextInt(options.length)]; }
+
     private static boolean known(String n) {
         switch (n) {
             case "set_alarm": case "set_timer": case "call_contact": case "send_message": case "flashlight":
@@ -138,9 +190,13 @@ final class Assistant {
     }
 
     private void reply(Host host, String text, String action, String emotion) {
+        if (giggly(text) && ("nod".equals(action) || "wave".equals(action))) { action = "laugh"; emotion = "laugh"; }
         host.say(text);
         host.cue(action, emotion);
-        speak(text);
+        // Gesture sound first ("tee-hee", "bee-doo!", a dance tune), then her words.
+        int ms = voiceOn() ? Sounds.forAction(action, emotion) : 0;
+        if (ms > 0) main.postDelayed(() -> speak(text), Math.min(ms, 900) + 80);
+        else speak(text);
     }
 
     private void run(Call c, String text, Host host) {
@@ -301,9 +357,12 @@ final class Assistant {
     private void fun(JSONObject a, Host host) {
         String act = a.optString("action", "wave");
         switch (act) {
-            case "dance": reply(host, "Dance party!", "dance", "happy"); break;
+            case "dance": reply(host, pick("Dance party!", "Watch my moves!", "Shake it, Sweety style!"), "dance", "happy"); break;
             case "jump": reply(host, "Boing!", "jump", "surprised"); break;
             case "spin": reply(host, "Wheee!", "spin", "dizzy"); break;
+            case "flip": reply(host, pick("Backflip! Ta-da!", "Hup! Stuck the landing!", "Flippity flip!"), "flip", "surprised"); break;
+            case "cartwheel": reply(host, pick("Cartwheel time! Wheee!", "Round and round I go!", "Look, no hands! Well, both hands."), "cartwheel", "dizzy"); break;
+            case "laugh": reply(host, pick("Hehe! You're funny!", "Teehee, stop it!", "Haha, that tickles my circuits!"), "laugh", "laugh"); break;
             case "joke": reply(host, JOKES[rnd.nextInt(JOKES.length)], "laugh", "laugh"); break;
             case "sleep": reply(host, "Nap time. Tap me to wake me up.", "sleep", "sleep"); break;
             case "outfit": {
@@ -314,7 +373,7 @@ final class Assistant {
                 reply(host, "Ta-da! " + pick.name + " time.", "outfit:" + pick.id, "happy");
                 break;
             }
-            default: reply(host, "Hi there!", "wave", "happy");
+            default: reply(host, pick("Hi there!", "Hiya!", "Hello hello!"), "wave", "happy");
         }
     }
 
@@ -331,10 +390,26 @@ final class Assistant {
                     : low.contains("love") ? "love"
                     : low.contains("haha") || low.contains("funny") ? "laugh"
                     : answer.endsWith("?") ? "curious" : "happy";
-                String action = "love".equals(emotion) ? "jump" : "laugh".equals(emotion) ? "laugh" : answer.contains("!") ? "wave" : "nod";
+                String action = "love".equals(emotion) ? "jump" : "laugh".equals(emotion) ? "laugh" : "nod";
+                // What the user said decides the gesture when it's obvious: wave back at "hi", dance at "dance"…
+                String[] g = gestureFor(s);
+                if (g != null) { action = g[0]; emotion = g[1]; }
                 reply(host, answer, action, emotion);
             });
         });
+    }
+
+    /** Gesture and mood for things people say, or null. */
+    static String[] gestureFor(String s) {
+        if (s.matches(".*\\b(hi|hello|hey|hiya|good (morning|afternoon|evening)|bye|goodbye|see you)\\b.*")) return new String[]{"wave", "happy"};
+        if (s.matches(".*\\b(danc\\w*|party|groove|boogie)\\b.*")) return new String[]{"dance", "happy"};
+        if (s.matches(".*\\b(back ?flip|flip|somersault)\\b.*")) return new String[]{"flip", "surprised"};
+        if (s.matches(".*\\b(cart ?wheel\\w*|wheeler|wheelie|wheely)\\b.*")) return new String[]{"cartwheel", "dizzy"};
+        if (s.matches(".*\\b(joke|funny|lol|haha|laugh)\\b.*")) return new String[]{"laugh", "laugh"};
+        if (s.matches(".*\\b(love you|cute|sweet|beautiful|pretty|best)\\b.*")) return new String[]{"jump", "love"};
+        if (s.matches(".*\\b(sad|cry|lonely|tired|upset)\\b.*")) return new String[]{"nod", "sad"};
+        if (s.matches(".*\\b(dumb|stupid|silly|idiot|useless|bad robot)\\b.*")) return new String[]{"shrug", "angry"};
+        return null;
     }
 
     private void canned(String text, Host host) {

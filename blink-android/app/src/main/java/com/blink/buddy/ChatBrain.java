@@ -13,12 +13,16 @@ import com.google.ai.edge.litertlm.ConversationConfig;
 import com.google.ai.edge.litertlm.Engine;
 import com.google.ai.edge.litertlm.EngineConfig;
 import com.google.ai.edge.litertlm.Message;
+import com.google.ai.edge.litertlm.SamplerConfig;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 /**
  * Sweety's chat brain: Qwen3-0.6B (Apache-2.0, 4-bit, about 330 MB) running offline on Google's LiteRT-LM.
@@ -29,10 +33,27 @@ final class ChatBrain {
     static final String MODEL_URL = "https://huggingface.co/litert-community/Qwen3-0.6B-int4/resolve/main/qwen3_0.6b_nothink_q4_block32_ekv1280.litertlm";
     private static final long MIN_SIZE = 250_000_000L;
     private static final String PERSONA =
-        "You are Sweety, a cute, cheerful little robot who lives on the user's phone as their friend and helper. "
-        + "Answer in one or two short, warm, playful sentences that sound natural when spoken aloud. "
-        + "Never use emojis, lists or markdown. You cannot browse the internet or see the weather or news; say so kindly if asked. "
-        + "You can set alarms and timers, call or text people, switch the torch, control music and take notes when the user asks.";
+        "You are Sweety, a tiny, bubbly robot girl with big sparkly eyes who lives on the user's phone. "
+        + "You are playful, curious, a little cheeky and very kind. You love dancing, jokes, stars and flowers. "
+        + "Always actually answer the question first, correctly and simply, then add a playful touch. "
+        + "If someone teases you, tease back sweetly instead of being boring. "
+        + "Reply in one to three short sentences that sound natural spoken aloud. Sometimes giggle with \"hehe\". "
+        + "No emojis, lists or markdown. You can't browse the internet or see weather or news; say so cutely if asked.";
+
+    /** Example chats the small model copies the style of. */
+    private static List<Message> examples() {
+        String[][] ex = {
+            {"Are you smart?", "Smart enough to set your alarms and tell you jokes! I'm a tiny robot with a big sparkly brain. Hehe!"},
+            {"You're stupid.", "Hey, rude! I'm small, not silly. Ask me something tricky and I'll prove it!"},
+            {"Why is the sky blue?", "Sunlight bumps into tiny bits of air, and blue light bounces around the most, so the whole sky glows blue. Pretty, right?"},
+            {"I'm bored.", "Ooh, let's fix that! Want a joke, a riddle, or shall I do a little dance for you?"},
+            {"What is 12 times 3?", "That's 36! Easy peasy robot math."},
+            {"Tell me a story.", "Once upon a time, a tiny robot found a lost star in the garden, polished it till it sparkled, and tossed it back into the sky. The end!"},
+        };
+        List<Message> out = new ArrayList<>();
+        for (String[] e : ex) { out.add(Message.Companion.user(e[0])); out.add(Message.Companion.model(e[1])); }
+        return out;
+    }
 
     interface Progress { void onProgress(long done, long total); void onDone(boolean ok, String message); }
 
@@ -127,7 +148,9 @@ final class ChatBrain {
 
     private void newConversation() {
         if (conv != null) { try { conv.close(); } catch (Exception ignored) { } }
-        conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(PERSONA)));
+        // A little randomness (temperature 0.8) keeps her lively instead of repeating the same safe line.
+        conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(PERSONA), examples(),
+            Collections.emptyList(), new SamplerConfig(40, 0.95, 0.8, (int) (System.nanoTime() & 0x7fffffff))));
         turns = 0;
     }
 
@@ -135,12 +158,14 @@ final class ChatBrain {
     synchronized String reply(String text) {
         if (!ensure()) return null;
         try {
-            if (turns >= 5) newConversation(); // keeps the small context window fresh
+            if (turns >= 4) newConversation(); // keeps the small context window fresh
             turns++;
             Message m = conv.sendMessage(text);
             StringBuilder sb = new StringBuilder();
             for (Content c : m.getContents().getContents()) if (c instanceof Content.Text) sb.append(((Content.Text) c).getText());
-            String out = sb.toString().replaceAll("(?s)<think>.*?</think>", "").replaceAll("[*#_`]", "").replaceAll("\\s+", " ").trim();
+            String out = sb.toString().replaceAll("(?s)<think>.*?</think>", "").replaceAll("[*#_`]", "")
+                .replaceAll("[\\x{1F000}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{FE0F}\\x{200D}]", "") // emojis
+                .replaceAll("^(?i)sweety\\s*:\\s*", "").replaceAll("\\s+", " ").trim();
             if (out.length() > 400) { int cut = out.lastIndexOf('.', 400); out = out.substring(0, cut > 80 ? cut + 1 : 400); }
             return out.isEmpty() ? null : out;
         } catch (Throwable t) {

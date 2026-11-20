@@ -70,8 +70,9 @@ final class Painter {
         }
 
         c.save();
-        c.translate(X, Y - rootY * u);
+        c.translate(X + k[Blink.RX] * u, Y - rootY * u);
         c.rotate(b.tilt * 57.3f, 0, -1.3f * u);
+        if (k[Blink.ROLL] != 0) c.rotate(k[Blink.ROLL] * 57.3f, 0, -.8f * u); // flips and cartwheels turn around the tummy
         c.scale(k[Blink.SX] * cs * v, k[Blink.SY] * v);
 
         float bodyCY = -k[Blink.BODY] * u;

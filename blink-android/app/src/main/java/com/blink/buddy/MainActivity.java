@@ -32,7 +32,32 @@ import android.widget.Toast;
 /** Sweety's home: talk to her, preview her nature scenes, start floating Sweety, set the wallpaper, tune moments. */
 public class MainActivity extends Activity implements Assistant.Host, Ears.Callback {
     private static final int REQ_MIC = 21, REQ_CONTACT = 22, REQ_WAKE = 23;
-    private TextView brainLine, chatInfo;
+    private TextView brainLine, chatInfo, wakeInfo;
+    private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
+
+    /** Live line under the Hey Sweety switch: what the listener is doing and the last thing it heard. */
+    private final Runnable wakeTick = new Runnable() {
+        @Override public void run() {
+            if (wakeInfo != null) {
+                if (!WakeService.enabled(MainActivity.this)) wakeInfo.setText("");
+                else {
+                    String heardLast = WakeService.lastHeard;
+                    wakeInfo.setText("Status: " + WakeService.state + (heardLast.isEmpty() ? "" : "\nLast heard: \"" + heardLast + "\""));
+                }
+            }
+            ui.postDelayed(this, 700);
+        }
+    };
+
+    /** Replies from "Hey Sweety" (and the talk window) also show here and move the preview. */
+    private final Bus.SweetyListener echo = this::onEcho;
+
+    private void onEcho(String text, String action, String emotion) {
+        ui.post(() -> {
+            if (text != null) { reply.setText(text); preview.blink.say(text, Math.max(3, text.length() / 14f)); }
+            if (action != null || emotion != null) preview.blink.cue(action, emotion);
+        });
+    }
     private CheckBox wakeBox;
     private Button chatBtn;
     private float dp;
@@ -96,6 +121,20 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         voice.setChecked(Assistant.get(this).voiceOn());
         voice.setOnCheckedChangeListener((b, on) -> Assistant.get(this).setVoiceOn(on));
         talk.addView(voice);
+        talk.addView(text("Her voice (tap to hear):", 13, false));
+        String[][] voices = new String[Assistant.VOICES.length][2];
+        for (int i = 0; i < voices.length; i++) { voices[i][0] = Assistant.VOICES[i][0]; voices[i][1] = Assistant.VOICES[i][1]; }
+        talk.addView(chipRow(voices, id -> {
+            Assistant a = Assistant.get(this);
+            a.setVoiceStyle(id);
+            String line = "Hi! I'm Sweety. Do you like my voice?";
+            say(line); cue("wave", "happy");
+            int ms = Sounds.play("hello");
+            preview.postDelayed(() -> a.speak(line), ms + 60);
+        }));
+        talk.addView(text("Tricks:", 13, false));
+        String[][] tricks = {{"wave", "Wave"}, {"dance", "Dance"}, {"flip", "Backflip"}, {"cartwheel", "Cartwheel"}, {"laugh", "Giggle"}, {"spin", "Spin"}, {"jump", "Jump"}};
+        talk.addView(chipRow(tricks, id -> ask(id.equals("laugh") ? "giggle" : id.equals("flip") ? "do a backflip" : id.equals("cartwheel") ? "do a cartwheel" : id)));
         TextView brain = text(Assistant.get(this).brainStatus(), 12, false);
         talk.addView(brain);
         LinearLayout.LayoutParams tlp = full(px(14));
@@ -111,6 +150,9 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         wakeBox.setChecked(WakeService.enabled(this));
         wakeBox.setOnCheckedChangeListener((b, on) -> setWake(on));
         col.addView(wakeBox, full(px(6)));
+        wakeInfo = text("", 13, false);
+        wakeInfo.setTextColor(0xFF2E7D5B);
+        col.addView(wakeInfo);
 
         // Chat brain: a small offline language model for real conversations
         col.addView(header("Chat brain"));
@@ -195,10 +237,29 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         // Android only lets the microphone service start while Sweety is on screen, so (re)start it here.
         WakeService.start(this);
         Assistant.get(this).warmChat();
+        Bus.addSweety(echo);
+        ui.removeCallbacks(wakeTick);
+        ui.post(wakeTick);
         if (wakeBox != null && wakeBox.isChecked() != WakeService.enabled(this)) {
             syncing = true; wakeBox.setChecked(WakeService.enabled(this)); syncing = false;
         }
         refreshChat();
+    }
+
+    @Override
+    protected void onPause() {
+        Bus.removeSweety(echo);
+        ui.removeCallbacks(wakeTick);
+        super.onPause();
+    }
+
+    /** Asks Android not to put Sweety to sleep in the background (some phones stop the listener otherwise). */
+    private void askToStayAwake() {
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName()))
+                startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
+        } catch (Exception ignored) { }
     }
 
     private boolean syncing;
@@ -211,6 +272,7 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) need.add(Manifest.permission.POST_NOTIFICATIONS);
         if (!need.isEmpty()) { requestPermissions(need.toArray(new String[0]), REQ_WAKE); return; }
         WakeService.setEnabled(this, true);
+        askToStayAwake();
         if (!Settings.canDrawOverlays(this)) {
             toast("Hey Sweety is on. Also allow \"Display over other apps\" so she can open the clock or dialer from any app.");
             try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))); }

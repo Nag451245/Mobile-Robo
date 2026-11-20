@@ -13,6 +13,8 @@
     <!-- Sweety hears you in the talk window, and for "Hey Sweety" while the screen is on (if you turn it on) -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Asks once that the phone doesn't put "Hey Sweety" to sleep in the background -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Only used once, to download the optional chat brain -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Set alarms and timers in the Clock app -->

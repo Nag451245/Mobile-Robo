@@ -43,12 +43,17 @@ public class WakeService extends Service {
      * "hey sweety", "hi sweetie", "ok sweaty", "hey sweet tea"… as Whistle may spell it. The name alone counts only
      * at the start of a phrase, so "you're such a sweetie" in a video doesn't wake her.
      */
+    private static final String NAME = "(?:swee?t(?:y|ie|ey|i|ee|ty|tie|ies|ys)|sweaty|swetty|swety|suit(?:e)?y|sweet\\s?(?:tea|e|ee|y))";
     static final Pattern WAKE = Pattern.compile(
-        "(?:^\\W*|\\b(?:hey|hay|hi|hello|ok|okay|oh)\\W*)(?:sweety|sweetie|sweetey|sweeti|sweetee|sweaty|swety|suitey|suity|sweet\\s?tea|sweet\\s?e)\\b[,.!?]*",
+        "(?:^\\W*(?:a\\W+)?" + NAME + "|\\b(?:hey|hay|hei|hi|hello|ok|okay|oh)\\W+(?:" + NAME + "|sweet\\w*|swee\\w*|swi\\w*ty|sweat\\w*))\\b[,.!?]*",
         Pattern.CASE_INSENSITIVE);
 
     private static volatile boolean running;
     private static volatile long holdUntil;
+
+    /** What the listener is doing right now, shown in the app so you can see it working. */
+    static volatile String state = "off";
+    static volatile String lastHeard = "";
 
     static boolean enabled(Context c) { return c.getSharedPreferences("blink", MODE_PRIVATE).getBoolean("wake", false); }
 
@@ -109,6 +114,7 @@ public class WakeService extends Service {
         } catch (Exception e) {
             // Android only lets the microphone service start while Sweety is on screen; try again next time the app opens.
             Log.w(TAG, "startForeground refused", e);
+            state = "Android blocked the microphone service: " + e.getClass().getSimpleName();
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -127,6 +133,7 @@ public class WakeService extends Service {
     public void onDestroy() {
         alive = false;
         running = false;
+        if (!state.startsWith("Android blocked")) state = "off";
         try { unregisterReceiver(screen); } catch (Exception ignored) { }
         if (loop != null) loop.interrupt();
         super.onDestroy();
@@ -159,7 +166,12 @@ public class WakeService extends Service {
     }
 
     private boolean shouldListen() {
-        return alive && active && !busy && System.currentTimeMillis() > holdUntil && !Assistant.get(this).talking();
+        if (!alive) return false;
+        if (!active) { state = "paused: screen is off or locked"; return false; }
+        if (busy) { state = "thinking about what it heard…"; return false; }
+        if (System.currentTimeMillis() <= holdUntil) { state = "paused while the talk window uses the mic"; return false; }
+        if (Assistant.get(this).talking()) { state = "paused while Sweety talks"; return false; }
+        return true;
     }
 
     /* ------------------------------------------------------------ microphone loop */
@@ -169,7 +181,7 @@ public class WakeService extends Service {
         float[] clip = new float[RATE * 7];
         int n = 0, silentMs = 0, speechMs = 0;
         boolean inSpeech = false;
-        double noise = 0.006;
+        double noise = 0.003;
         float[] pre = new float[RATE * 3 / 10]; // 300 ms before the voice starts
         int preN = 0;
         long quietSince = 0;
@@ -186,18 +198,20 @@ public class WakeService extends Service {
                 if (System.currentTimeMillis() - quietSince < 500) { Thread.sleep(100); continue; }
                 if (ar == null) {
                     ar = openMic();
-                    if (ar == null) { Thread.sleep(3000); continue; }
+                    if (ar == null) { state = "microphone busy or blocked, retrying…"; Thread.sleep(3000); continue; }
                 }
+                if (!inSpeech) state = awaitUntil > 0 ? "listening for your request…" : "listening for \"Hey Sweety\"…";
                 int r = ar.read(buf, 0, buf.length);
                 if (r <= 0) { closeMic(ar); ar = null; Thread.sleep(500); continue; }
                 double sum = 0;
                 for (int i = 0; i < r; i++) { float v = buf[i] / 32768f; sum += v * v; }
                 double rms = Math.sqrt(sum / r);
-                double threshold = Math.max(0.012, noise * 3.2);
+                // Phones record voice-recognition audio quite quietly, so the bar is low and follows the room's noise.
+                double threshold = Math.max(0.005, noise * 2.6);
                 boolean voiced = rms > threshold;
 
                 if (!inSpeech) {
-                    noise = noise * 0.97 + Math.min(rms, 0.05) * 0.03;
+                    noise = noise * 0.97 + Math.min(rms, 0.03) * 0.03;
                     // keep a short pre-roll so the start of "hey" isn't cut off
                     for (int i = 0; i < r; i++) { pre[preN % pre.length] = buf[i] / 32768f; preN++; }
                     if (voiced) {
@@ -259,9 +273,14 @@ public class WakeService extends Service {
     /* ------------------------------------------------------------ what was said */
     private void heard(float[] audio) {
         Assistant a = Assistant.get(this);
-        if (!a.localHearing()) { busy = false; updateNote("Hey Sweety needs Whistle, Sweety's offline hearing, which didn't load on this phone."); return; }
+        if (!a.localHearing()) { busy = false; state = "can't hear: Whistle (offline hearing) didn't load"; updateNote("Hey Sweety needs Whistle, Sweety's offline hearing, which didn't load on this phone."); return; }
+        // Turn quiet recordings up so Whistle hears them clearly.
+        float peak = 0;
+        for (float v : audio) peak = Math.max(peak, Math.abs(v));
+        if (peak > 0 && peak < .5f) { float g = Math.min(8f, .9f / peak); for (int i = 0; i < audio.length; i++) audio[i] *= g; }
         a.transcribe(audio, text -> {
             String t = text == null ? "" : text.trim();
+            if (!t.isEmpty()) lastHeard = t;
             boolean awaiting = awaitUntil > 0 && System.currentTimeMillis() < awaitUntil;
             if (t.isEmpty()) { busy = false; return; }
             if (awaiting) { awaitUntil = 0; command(t); return; }
@@ -274,7 +293,8 @@ public class WakeService extends Service {
             String say = hi[(int) (System.nanoTime() % hi.length + hi.length) % hi.length];
             Bus.sweety(say, "wave", "curious");
             updateNote("Listening… " + say);
-            a.speak(say);
+            int ms = a.voiceOn() ? Sounds.play("hello") : 0;
+            main.postDelayed(() -> a.speak(say), ms + 60);
             awaitUntil = System.currentTimeMillis() + 8000;
             busy = false;
         });

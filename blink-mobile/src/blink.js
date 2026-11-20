@@ -112,7 +112,7 @@ class Bot{
     this.accParts=[];this.accAnims=[];this.parts=[];
     this.t=Math.random()*10;this.action=null;this.aT=0;this.aDur=0;this.emo='neutral';this.baseEmo='neutral';this.emoUntil=Infinity;
     this.blinkNext=this.t+2;this.blinkT=-1;this.look={x:0,y:0};this.lookTarget={x:0,y:0};this.walk=0;this.fly=0;this.sleeping=false;this.onActionEnd=null;this.pendingSkin=null;
-    this.cur={rootY:0,rootRotY:0,sx:1,sy:1,bodyY:.72,headX:0,headY:0,headZ:0,armL:-.2,armR:.2,armLx:0,armRx:0};
+    this.cur={rootY:0,rootRotY:0,rootRotX:0,rootRotZ:0,sx:1,sy:1,bodyY:.72,headX:0,headY:0,headZ:0,armL:-.2,armR:.2,armLx:0,armRx:0};
     this.applySkin(typeof opts.skin==='string'?(SKIN_BY[opts.skin]||SKINS[0]):(opts.skin||SKINS[0]));
   }
   applySkin(sk){
@@ -149,16 +149,16 @@ class Bot{
     for(let i=0;i<22;i++){const m=new THREE.Mesh(PG[i%3],new THREE.MeshBasicMaterial({color:cols[i%cols.length]}));m.position.set(rand(-.3,.3),rand(.9,1.9),rand(-.1,.5));
       const v=new THREE.Vector3(rand(-1,1),rand(.2,1.3),rand(-.3,1)).normalize().multiplyScalar(rand(1.8,3.4));this.group.add(m);this.parts.push({m,v,life:0,max:rand(.8,1.2)});}}
   setEmotion(e,dur=2.5){this.emo=e;this.emoUntil=dur?this.t+dur:Infinity;}
-  play(name,dur){const D={wave:2.4,dance:4.2,jump:1.1,spin:1.3,stretch:2.6,laugh:2.2,shrug:1.8,nod:1.4,hide:3.4,giggle:1.2,change:1.2,carried:9999};
+  play(name,dur){const D={wave:2.4,dance:4.2,jump:1.1,spin:1.3,stretch:2.6,laugh:2.2,shrug:1.8,nod:1.4,hide:3.4,giggle:1.2,change:1.2,carried:9999,flip:1.3,cartwheel:1.7};
     if(this.action==='change'&&this.pendingSkin){this.applySkin(this.pendingSkin);this.pendingSkin=null;this.cur.rootRotY=0;}
     this.action=name;this.aT=0;this.aDur=dur||D[name]||2;this._swapped=false;if(this.sleeping&&name!=='hide')this.sleeping=false;}
-  stop(){if(this.action==='change'&&this.pendingSkin){this.applySkin(this.pendingSkin);this.pendingSkin=null;}if(this.action==='spin'||this.action==='change')this.cur.rootRotY=0;this.action=null;}
+  stop(){if(this.action==='change'&&this.pendingSkin){this.applySkin(this.pendingSkin);this.pendingSkin=null;}if(this.action==='spin'||this.action==='change')this.cur.rootRotY=0;this.cur.rootRotX=this.cur.rootRotZ=0;this.action=null;}
   update(dt){
     this.t+=dt;const t=this.t,c=this.cur;
     if(t>this.emoUntil){this.emo=this.sleeping?'sleep':this.baseEmo;this.emoUntil=Infinity;}
     if(this.sleeping&&this.emoUntil===Infinity)this.emo='sleep';
     const breathe=REDUCE?0:Math.sin(t*2.2);
-    const T={rootY:0,rootRotY:0,sx:1,sy:1,bodyY:.72+breathe*.022,headX:-this.look.y*.2,headY:this.look.x*.42,headZ:REDUCE?0:Math.sin(t*.9)*.05,armL:-.2-breathe*.05,armR:.2+breathe*.05,armLx:0,armRx:0};
+    const T={rootY:0,rootRotY:0,rootRotX:0,rootRotZ:0,sx:1,sy:1,bodyY:.72+breathe*.022,headX:-this.look.y*.2,headY:this.look.x*.42,headZ:REDUCE?0:Math.sin(t*.9)*.05,armL:-.2-breathe*.05,armR:.2+breathe*.05,armLx:0,armRx:0};
     if(this.walk>0){const w=this.walk,s=t*11;T.rootY+=Math.abs(Math.sin(s))*.08*w;T.armLx=Math.sin(s)*.7*w;T.armRx=-Math.sin(s)*.7*w;T.headZ+=Math.sin(s)*.06*w;this.feet[0].position.z=.06+Math.sin(s)*.14*w;this.feet[1].position.z=.06-Math.sin(s)*.14*w;}
     else{this.feet[0].position.z=this.feet[1].position.z=.06;}
     if(this.fly>.01){const f=this.fly;T.armL=lerp(T.armL,-1.3,f);T.armR=lerp(T.armR,1.3,f);T.armLx=lerp(T.armLx,.6,f);T.armRx=lerp(T.armRx,.6,f);T.rootY+=Math.sin(t*4)*.05*f;this.feet[0].position.z=this.feet[1].position.z=.06-.14*f;}
@@ -177,14 +177,16 @@ class Bot{
         case 'shrug':{const k=Math.sin(p*Math.PI);T.armL=-.2-k*.9;T.armR=.2+k*.9;T.armLx=T.armRx=-k*.6;T.headZ+=k*.25;T.bodyY+=k*.04;break;}
         case 'giggle':{T.rootY+=Math.abs(Math.sin(a*14))*.12*(1-p);T.headZ+=Math.sin(a*20)*.08*(1-p);break;}
         case 'nod':{T.headX=Math.sin(p*Math.PI*4)*.25;break;}
+        case 'flip':{if(p<.15){T.sy=1-.2*Math.sin(p/.15*Math.PI);T.sx=1+(1-T.sy)*.6;}else if(p<.85){const q=(p-.15)/.7;T.rootY+=Math.sin(q*Math.PI)*1.25;T.rootRotX=-easeInOut(q)*Math.PI*2;c.rootRotX=T.rootRotX;T.armL=-2.4;T.armR=2.4;T.sy=.92;}else{const q=(p-.85)/.15;T.sy=1-.15*Math.sin(q*Math.PI);T.sx=1+(1-T.sy)*.6;T.armL=-1;T.armR=1;}break;}
+        case 'cartwheel':{T.rootRotZ=easeInOut(p)*Math.PI*2;c.rootRotZ=T.rootRotZ;T.rootY+=Math.sin(p*Math.PI)*.25;T.armL=-2.1;T.armR=2.1;T.headZ+=Math.sin(p*Math.PI*2)*.2;break;}
         case 'hide':{const k=p<.2?smooth(p/.2):p>.8?smooth((1-p)/.2):1;T.sx=T.sy=1-k*.98;T.rootRotY=k*Math.PI;break;}
         case 'carried':{T.armL=-2.3+Math.sin(a*7)*.2;T.armR=2.3-Math.sin(a*7)*.2;T.headZ+=Math.sin(a*5)*.12;T.headX=.1;this.feet[0].position.z=.06+Math.sin(a*9)*.14;this.feet[1].position.z=.06-Math.sin(a*9)*.14;break;}
       }
-      if(this.action&&this.aT>=this.aDur){const done=this.action;this.action=null;if(done==='spin'||done==='change'){c.rootRotY-=Math.PI*2;T.rootRotY=0;}if(done==='change'&&this.pendingSkin){this.applySkin(this.pendingSkin);this.pendingSkin=null;}if(this.onActionEnd)this.onActionEnd(done);}
+      if(this.action&&this.aT>=this.aDur){const done=this.action;this.action=null;if(done==='spin'||done==='change'){c.rootRotY-=Math.PI*2;T.rootRotY=0;}if(done==='flip'){c.rootRotX+=Math.PI*2;T.rootRotX=0;}if(done==='cartwheel'){c.rootRotZ-=Math.PI*2;T.rootRotZ=0;}if(done==='change'&&this.pendingSkin){this.applySkin(this.pendingSkin);this.pendingSkin=null;}if(this.onActionEnd)this.onActionEnd(done);}
     }
     const k=1-Math.exp(-dt*(this.action?30:9));
     for(const key in T)c[key]=lerp(c[key],T[key],k);
-    this.root.position.y=c.rootY;this.root.rotation.y=c.rootRotY;this.root.scale.set(c.sx,c.sy,c.sx);
+    const PIV=.8,rx=c.rootRotX||0,rz=c.rootRotZ||0;this.root.position.set(PIV*Math.sin(rz),c.rootY+PIV*(2-Math.cos(rx)-Math.cos(rz)),-PIV*Math.sin(rx));this.root.rotation.set(rx,c.rootRotY,rz);this.root.scale.set(c.sx,c.sy,c.sx);
     this.body.position.y=c.bodyY;this.headPivot.rotation.set(c.headX,c.headY,c.headZ);
     this.armL.rotation.set(c.armLx,0,c.armL);this.armR.rotation.set(c.armRx,0,c.armR);
     if(!REDUCE)for(const f of this.accAnims)f(t);
