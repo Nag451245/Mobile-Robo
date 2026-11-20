@@ -37,6 +37,52 @@ public class HostTest {
         System.out.println((ok ? "ok    " : "FAIL  ") + "alarm [" + text + "] -> " + (c == null ? "none" : c.name + " " + c.args) + (ok ? "" : "   expected " + h + ":" + m));
     }
 
+    static void greet(String text, int h, int m, String expectAction, String expectWords) {
+        String[] g = DayTime.greet(text, h, m, new java.util.Random(1));
+        boolean ok = expectAction == null ? g == null : g != null && g[1].equals(expectAction) && g[0].toLowerCase().matches("(?s).*(" + expectWords + ").*");
+        if (!ok) fails++;
+        System.out.println((ok ? "ok    " : "FAIL  ") + "time " + DayTime.clock(h, m) + " [" + text + "] -> " + (g == null ? "(not a greeting)" : "[" + g[1] + "/" + g[2] + "] " + g[0])
+            + (ok ? "" : "   expected " + expectAction + " ~ " + expectWords));
+    }
+
+    /** Every hour of the day: a sensible part of day, valid antics and lines, the right greeting. */
+    static void dayTime() {
+        java.util.Set<String> moves = new java.util.HashSet<>(java.util.Arrays.asList("sleep", "stretch", "nod", "wave", "jump", "dance", "spin", "cartwheel", "flip", "shrug"));
+        java.util.Random r = new java.util.Random(7);
+        for (int h = 0; h < 24; h++) {
+            int p = DayTime.part(h);
+            boolean ok = true;
+            for (int k = 0; k < 30; k++) { String[] o = DayTime.idle(p, r); ok &= moves.contains(o[0]) && o[1] != null; ok &= DayTime.idleLine(p, r) != null; }
+            String[] hr = DayTime.hourly(h, r);
+            ok &= moves.contains(hr[1]) && hr[0].startsWith(h == 0 ? "It's midnight" : h == 12 ? "It's noon" : "It's " + DayTime.clock(h, 0));
+            ok &= DayTime.greet("hi", h, 0, r) != null;
+            if (!ok) fails++;
+            System.out.println((ok ? "ok    " : "FAIL  ") + "hour " + h + ": " + DayTime.NAMES[p] + ", e.g. " + String.join("/", DayTime.idle(p, r)) + ", \"" + hr[0] + "\"");
+        }
+        boolean nightDozes = false, afternoonDances = false;
+        for (int k = 0; k < 200; k++) { nightDozes |= "sleep".equals(DayTime.idle(DayTime.LATE, r)[0]); afternoonDances |= "dance".equals(DayTime.idle(DayTime.AFTERNOON, r)[0]); }
+        if (!nightDozes || !afternoonDances) fails++;
+        System.out.println((nightDozes && afternoonDances ? "ok    " : "FAIL  ") + "she dozes after midnight and dances in the afternoon");
+        greet("Good morning!", 8, 15, "stretch", "morning");
+        greet("good morning sweety", 23, 10, "laugh", "night|silly");
+        greet("Good morning", 15, 0, "laugh", "already|sleepyhead");
+        greet("Good night", 22, 30, "sleep", "dream|night|sleep");
+        greet("good night", 14, 0, "laugh", "nap|only");
+        greet("Hi", 2, 5, "wave", "awake");
+        greet("Hey Sweety!", 12, 30, "wave", "lunch");
+        greet("Hello there", 19, 0, "wave", "evening");
+        greet("Hi, set an alarm for 7", 9, 0, null, "");
+        greet("What time is it?", 9, 0, null, "");
+        java.util.Calendar c = java.util.Calendar.getInstance(); c.set(java.util.Calendar.HOUR_OF_DAY, 1); c.set(java.util.Calendar.MINUTE, 30);
+        String ctx = DayTime.chatContext(c);
+        boolean ok = ctx.contains("1:30 AM") && ctx.contains("sleepy");
+        if (!ok) fails++;
+        System.out.println((ok ? "ok    " : "FAIL  ") + "chat brain is told: " + ctx);
+        String tw = DayTime.lateTwist("dance", r);
+        if (tw == null) fails++;
+        System.out.println((tw != null ? "ok    " : "FAIL  ") + "midnight dance: " + tw);
+    }
+
     public static void main(String[] a) throws Exception {
         if (a.length > 0 && a[0].equals("tools")) { System.out.print(Call.TOOLS_JSON); return; }
         if (a.length > 1 && a[0].equals("needle")) { needle(a[1]); finish(); return; }
@@ -89,6 +135,8 @@ public class HostTest {
         wake("Hey Sweden", null);
         wake("Thank you.", null);
         wake("", null);
+
+        dayTime();
 
         route("are you dumb?", "sweety_fun", .95f, "chat");
         route("are you dumb?", null, 0, "chat");

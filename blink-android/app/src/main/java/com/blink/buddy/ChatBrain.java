@@ -155,14 +155,18 @@ final class ChatBrain {
 
     /** "full": persona, example chats and lively sampling. "plain": persona only, in case this engine refuses the rest. */
     private String mode = "full";
+    private int convPart = -1;
 
     private void newConversation() {
         if (conv != null) { try { conv.close(); } catch (Throwable ignored) { } conv = null; }
         turns = 0;
+        // She knows the time, so "what time is it" chit-chat and late-night sleepiness come out right.
+        convPart = DayTime.now();
+        String persona = PERSONA + " " + DayTime.chatContext(java.util.Calendar.getInstance());
         if ("full".equals(mode)) {
             try {
                 // A little randomness (temperature 0.8) keeps her lively instead of repeating the same safe line.
-                conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(PERSONA), examples(),
+                conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(persona), examples(),
                     Collections.emptyList(), new SamplerConfig(40, 0.95, 0.8, (int) (System.nanoTime() & 0x7fffffff))));
                 return;
             } catch (Throwable t) {
@@ -170,7 +174,7 @@ final class ChatBrain {
                 mode = "plain";
             }
         }
-        conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(PERSONA)));
+        conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(persona)));
     }
 
     /** One short reply in Sweety's voice, or null if the chat brain isn't available. Blocking: call off the main thread. */
@@ -179,7 +183,8 @@ final class ChatBrain {
         for (int attempt = 0; attempt < 2; attempt++) {
             long t0 = System.currentTimeMillis();
             try {
-                if (conv == null || turns >= 4) newConversation(); // keeps the small context window fresh
+                // A fresh chat every few turns keeps the small context window clear, and a new part of the day updates her clock.
+                if (conv == null || turns >= 4 || convPart != DayTime.now()) newConversation();
                 turns++;
                 String out = clean(conv.sendMessage(text));
                 Log.i(TAG, "chat reply in " + (System.currentTimeMillis() - t0) + " ms (" + mode + "): " + out);

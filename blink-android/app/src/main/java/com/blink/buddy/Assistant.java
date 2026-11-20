@@ -123,9 +123,15 @@ final class Assistant {
 
     private void applyVoiceStyle() {
         if (!ttsReady) return;
+        float[] pv = voiceValues();
+        tts.setPitch(pv[0]); tts.setSpeechRate(pv[1]);
+    }
+
+    /** Pitch and speed of the chosen voice style. */
+    private float[] voiceValues() {
         String id = voiceStyle();
-        for (String[] v : VOICES) if (v[0].equals(id)) { tts.setPitch(Float.parseFloat(v[2])); tts.setSpeechRate(Float.parseFloat(v[3])); return; }
-        tts.setPitch(1.6f); tts.setSpeechRate(1.08f);
+        for (String[] v : VOICES) if (v[0].equals(id)) return new float[]{Float.parseFloat(v[2]), Float.parseFloat(v[3])};
+        return new float[]{1.6f, 1.08f};
     }
 
     /** Prefers a young-sounding female English voice that works offline (Google's voice names, then any "female" voice). */
@@ -158,6 +164,11 @@ final class Assistant {
         // "hehe", "haha" read aloud sound odd, so the giggle sound plays instead.
         String said = text.replaceAll("(?i)\\b(he ?he+|ha ?ha+|hi ?hi+|tee ?hee+)\\b[!.]?", "").replaceAll("[^\\p{L}\\p{N}\\p{P}\\s]", "").trim();
         if (said.isEmpty()) return;
+        // After midnight she talks a little slower and lower: sleepy Sweety.
+        boolean late = DayTime.now() == DayTime.LATE;
+        float[] pv = voiceValues();
+        tts.setPitch(pv[0] * (late ? .94f : 1f));
+        tts.setSpeechRate(pv[1] * (late ? .88f : 1f));
         tts.speak(said, TextToSpeech.QUEUE_FLUSH, null, "sweety");
     }
 
@@ -168,6 +179,9 @@ final class Assistant {
     /** Understand and act on one sentence. Callbacks to the host happen on the main thread. */
     void handle(String text, Host host) {
         if (text == null || text.trim().isEmpty()) return;
+        // A plain "hi" or "good morning" gets an instant reply that fits the time of day.
+        String[] greet = DayTime.greet(text, DayTime.hour(), DayTime.minute(), rnd);
+        if (greet != null) { Log.i(TAG, "\"" + text + "\" => greeting"); main.post(() -> reply(host, greet[0], greet[1], greet[2])); return; }
         host.cue("nod", "curious");
         worker.execute(() -> {
             Call call = null;
@@ -189,6 +203,8 @@ final class Assistant {
     private void reply(Host host, String text, String action, String emotion) {
         Log.i(TAG, "reply [" + action + "/" + emotion + "]: " + text);
         if (giggly(text) && ("nod".equals(action) || "wave".equals(action))) { action = "laugh"; emotion = "laugh"; }
+        // After midnight her happy face is a sleepy one.
+        if (DayTime.now() == DayTime.LATE && "happy".equals(emotion) && ("nod".equals(action) || "wave".equals(action))) emotion = "sleepy";
         host.say(text);
         host.cue(action, emotion);
         // Gesture sound first ("tee-hee", "bee-doo!", a dance tune), then her words.
@@ -354,6 +370,10 @@ final class Assistant {
 
     private void fun(JSONObject a, Host host) {
         String act = a.optString("action", "wave");
+        if (DayTime.now() == DayTime.LATE) { // after midnight: the trick, but sleepy
+            String twist = DayTime.lateTwist(act, rnd);
+            if (twist != null) { reply(host, twist, act, "sleepy"); return; }
+        }
         switch (act) {
             case "dance": reply(host, pick("Dance party!", "Watch my moves!", "Shake it, Sweety style!"), "dance", "happy"); break;
             case "jump": reply(host, "Boing!", "jump", "surprised"); break;
@@ -412,7 +432,7 @@ final class Assistant {
 
     private void canned(String text, Host host) {
         String s = text.toLowerCase(Locale.ROOT);
-        if (s.matches(".*\\b(hi|hello|hey|good morning|good evening)\\b.*")) reply(host, "Hi! I'm Sweety. How can I help?", "wave", "happy");
+        if (s.matches(".*\\b(hi|hello|hey|good morning|good evening)\\b.*")) { String[] g = DayTime.greet("hi", DayTime.hour(), DayTime.minute(), rnd); reply(host, g[0], g[1], g[2]); }
         else if (s.contains("your name") || s.contains("who are you")) reply(host, "I'm Sweety, your little robot helper!", "wave", "love");
         else if (s.contains("how are you")) reply(host, "I'm feeling sweet as candy! How about you?", "dance", "happy");
         else if (s.contains("thank")) reply(host, "Anytime! That's what I'm here for.", "nod", "love");

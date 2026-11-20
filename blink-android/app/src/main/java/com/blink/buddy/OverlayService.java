@@ -394,10 +394,35 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
 
     private void savePos() { prefs.edit().putFloat("floatX", x).putFloat("floatY", y).apply(); }
 
+    private int lastHourSaid = -1;
+
     private void idle(long now) {
         nextIdle = now + (long) rand(18000, 40000);
         float r = rnd.nextFloat();
         float gy = groundY();
+        if (Moments.on(prefs, "time-of-day")) {
+            int hour = DayTime.hour(), part = DayTime.part(hour);
+            // A little hello at the top of each hour.
+            if (DayTime.minute() < 10 && hour != lastHourSaid) {
+                lastHourSaid = hour;
+                String[] o = DayTime.hourly(hour, rnd);
+                act("B.sleep(false);B.play('" + o[1] + "');B.emote('" + o[2] + "',3)");
+                say(o[0], 3200);
+                return;
+            }
+            // Antics that fit the time: dozing after midnight, stretching at dawn, dancing in the afternoon…
+            float chance = part == DayTime.LATE ? .7f : DayTime.sleepy(part) || part == DayTime.EARLY ? .55f : .4f;
+            if (r < chance) {
+                String[] o = DayTime.idle(part, rnd);
+                if ("sleep".equals(o[0])) {
+                    act("B.sleep(true)");
+                    if (rnd.nextFloat() < .3f) say("Zzz…", 1800);
+                    h.postDelayed(() -> act("B.sleep(false);B.play('stretch');B.emote('sleepy',2)"), (long) rand(9000, 20000));
+                } else act("B.sleep(false);B.play('" + o[0] + "');B.emote('" + o[1] + "',2.6)");
+                if (rnd.nextFloat() < .3f) say(DayTime.idleLine(part, rnd), 3200);
+                return;
+            }
+        }
         if (r < .35f) {
             String[] a = {"B.play('wave');B.emote('happy',2.4)", "B.play('dance');B.emote('happy',4.2)", "B.play('spin');B.emote('dizzy',2.5)", "B.play('jump');B.emote('surprised',1.2)", "B.play('stretch');B.emote('happy',2.6)"};
             act(a[rnd.nextInt(a.length)]);

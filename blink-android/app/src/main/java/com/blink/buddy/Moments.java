@@ -20,7 +20,8 @@ final class Moments {
         {"shake", "Shake it", "Shake the phone to bounce Sweety around."},
         {"pet", "Pet and purr", "Stroke Sweety with your finger for heart eyes."},
         {"outfit-day", "Outfit of the day", "A new outfit every day. Double-tap Sweety to change it yourself."},
-        {"break", "Screen-time nudge", "After 30 minutes unlocked, Sweety suggests a stretch."}
+        {"break", "Screen-time nudge", "After 30 minutes unlocked, Sweety suggests a stretch."},
+        {"time-of-day", "Time of day", "Sleepy and yawny late at night, stretchy at dawn, dancy in the afternoon, and a little hello on the hour."}
     };
 
     static boolean on(SharedPreferences p, String id) { return p.getBoolean("m_" + id, true); }

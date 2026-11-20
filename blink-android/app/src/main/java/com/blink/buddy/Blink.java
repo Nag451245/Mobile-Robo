@@ -496,7 +496,18 @@ final class Blink {
         if (action == null && !hasTarget && mode == GROUND && timers.isEmpty() && !sleeping && t > nextIdle) {
             nextIdle = t + (locked ? rand(12, 24) : rand(8, 18));
             float r = rnd.nextFloat();
-            if (locked) { if (r < .5f) play("nod"); else play("wave"); }
+            int part = DayTime.now();
+            float timely = part == DayTime.LATE ? .7f : DayTime.sleepy(part) || part == DayTime.EARLY ? .55f : .35f;
+            if (on("time-of-day") && !locked && r < timely) {
+                // Antics that fit the time of day: dozing after midnight, stretching at dawn, dancing in the afternoon…
+                String[] o = DayTime.idle(part, rnd);
+                if ("sleep".equals(o[0])) {
+                    sleeping = true; emoUntil = Float.MAX_VALUE;
+                    later(rand(8, 16), () -> { if (sleeping) { sleeping = false; play("stretch"); setEmotion("sleepy", 2); } });
+                } else { play(o[0]); setEmotion(o[1], 2.4f); }
+                if (rnd.nextFloat() < .25f) say(DayTime.idleLine(part, rnd), 3);
+            }
+            else if (locked) { if (r < .5f) play("nod"); else play("wave"); }
             else if (r < .45f) { speedMul = lowWarned ? .5f : 1; walkTo(scroll + W * rand(.2f, .8f), null); }
             else if (r < .6f) play("jump");
             else if (r < .75f) play("wave");

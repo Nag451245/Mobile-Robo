@@ -89,6 +89,24 @@ if setup "$APK_X86" false; then
   ask "Are you dumb?" "[a-z]" 300
   ask "Tell me about the moon." "moon|earth|night|sky|space|orbit|light" 300
   ask "Why do cats purr?" "cat|purr|happy|content|relax|vibrat" 300
+  # Time of day: set the phone clock and check her greeting changes with it.
+  adb shell settings put global auto_time 0 >/dev/null 2>&1
+  timed_hi() { # timed_hi <MMDDhhmm> <label> <what she says> <regex>
+    adb shell date "$1"2026.00 >/dev/null 2>&1
+    local from; from=$(lines)
+    adb shell am start -n $PKG/.TalkActivity --es ask "" >/dev/null 2>&1
+    if wait_for "$from" "Sweety .*reply \[" 60; then
+      local r; r=$(found "$from" "Sweety .*reply \[")
+      if echo "$r" | grep -qiE "$4"; then pass "$2: \"$3\" -> $r"; else fail "$2: \"$3\" -> $r"; fi
+    else fail "$2: no reply to \"$3\""; fi
+    sleep 4
+  }
+  timed_hi 11200130 "at 1:30 AM" "Hi Sweety" "awake|late"
+  timed_hi 11200815 "at 8:15 AM" "Good morning" "stretch.*morning"
+  timed_hi 11202310 "at 11:10 PM" "Good morning" "night|silly"
+  timed_hi 11202240 "at 10:40 PM" "Good night" "sleep.*(dream|night)"
+  timed_hi 11200140 "at 1:40 AM" "Dance for me" "dance/sleepy.*(midnight|quiet|neighbours)"
+  adb shell settings put global auto_time 1 >/dev/null 2>&1
   found "$A" "SweetyChat.*ready in" | sed 's/^/      /' | tee -a "$SUM"
   adb exec-out screencap -p > "$OUT/A-chat.png"
   frozen "$A" "phase A"
