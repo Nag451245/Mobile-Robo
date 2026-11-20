@@ -13,6 +13,7 @@ final class RuleBrain {
     Call parse(String raw) {
         String s = " " + raw.toLowerCase(Locale.ROOT).replaceAll("[?!,]", " ").replaceAll("\\s+", " ").trim() + " ";
         s = s.replaceFirst("^ (hey |hi |ok |okay )?(sweety|sweetie|sweet)\\b", " ");
+        s = misheard(s);
         String orig = " " + raw.replaceAll("[?!,]", " ").replaceAll("\\s+", " ").trim() + " "; // keeps the user's capitals for message and note text
 
         // notes
@@ -145,6 +146,12 @@ final class RuleBrain {
             default: return true;
         }
         return Pattern.compile("\\b(" + k + ")\\b", Pattern.CASE_INSENSITIVE).matcher(text).find();
+    }
+
+    /** Everyday mishearings from offline speech-to-text: "what tim is it" -> "what time is it". */
+    static String misheard(String s) {
+        return s.replaceAll("\\b(what|the) (tim|tam|thyme|tine)\\b", "$1 time").replaceAll("\\b(tim|tam|thyme|tine) (is it|now|please)\\b", "time $2")
+            .replaceAll("\\b(sat|said|sit) (in|on|and|an) alarm\\b", "set an alarm").replaceAll("\\bset (in|on|and) alarm\\b", "set an alarm");
     }
 
     private static final String[] HOURS = {"twelve", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven"};

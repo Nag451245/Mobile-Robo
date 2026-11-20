@@ -44,7 +44,9 @@ final class NeedleBrain {
                 // Warm-up: Whistle's first transcription is much slower than the rest, so do it now on half a second
                 // of silence instead of on the user's first "Hey Sweety".
                 long t0 = System.currentTimeMillis();
-                try { CactusNative.transcribe(new float[8000], "en", Assistant.KEYWORDS); } catch (Throwable ignored) { }
+                float[] hum = new float[16000]; // a quiet hum, so the whole model runs (pure silence is skipped)
+                for (int i = 0; i < hum.length; i++) hum[i] = (float) (Math.sin(i * 2 * Math.PI * 220 / 16000) * .05);
+                try { CactusNative.transcribe(hum, "en", Assistant.KEYWORDS); } catch (Throwable ignored) { }
                 Log.i(TAG, "Whistle warmed up in " + (System.currentTimeMillis() - t0) + " ms");
             }
         } catch (Throwable t) {

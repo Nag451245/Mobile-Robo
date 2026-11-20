@@ -157,6 +157,9 @@ public class HostTest {
         alarm("set an alarm for 7 30 pm", 19, 30);
         alarm("alarm at ten o clock at night", 22, 0);
         route("what time is it", "phone_status", .9f, "phone_status");
+        route("what Tim is it?", null, 0, "phone_status");
+        route("call Tim", null, 0, "call_contact");
+        route("sat in alarm for seven I am", null, 0, "set_alarm");
         route("remind me in 10 minutes to drink water", "set_timer", .9f, "set_timer");
         route("turn on the torch", "flashlight", .9f, "flashlight");
         route("call mom", "call_contact", .9f, "call_contact");
