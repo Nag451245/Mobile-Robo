@@ -1,79 +1,194 @@
 package com.blink.buddy;
 
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
+import android.content.ServiceConnection;
+import android.content.SharedPreferences;
+import android.os.Bundle;
 import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.IBinder;
 import android.os.Looper;
+import android.os.Message;
+import android.os.Messenger;
 import android.util.Log;
-
-import com.google.ai.edge.litertlm.Backend;
-import com.google.ai.edge.litertlm.Content;
-import com.google.ai.edge.litertlm.Contents;
-import com.google.ai.edge.litertlm.Conversation;
-import com.google.ai.edge.litertlm.ConversationConfig;
-import com.google.ai.edge.litertlm.Engine;
-import com.google.ai.edge.litertlm.EngineConfig;
-import com.google.ai.edge.litertlm.Message;
-import com.google.ai.edge.litertlm.SamplerConfig;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Sweety's chat brain: Qwen3-0.6B (Apache-2.0, 4-bit, about 330 MB) running offline on Google's LiteRT-LM.
  * Downloaded once inside the app; after that, chit-chat and questions work without the internet.
+ *
+ * The engine itself runs in its own process ({@link ChatService}): if it ever crashes in native code on some phone,
+ * only that process ends. After two such crashes Sweety stops starting it and says so, instead of crash-looping.
  */
 final class ChatBrain {
     private static final String TAG = "SweetyChat";
     static final String MODEL_URL = "https://huggingface.co/litert-community/Qwen3-0.6B-int4/resolve/main/qwen3_0.6b_nothink_q4_block32_ekv1280.litertlm";
     private static final long MIN_SIZE = 250_000_000L;
-    // Kept short: every new chat re-reads it, and a small phone reads about 50-200 words a second.
-    private static final String PERSONA =
-        "You are Sweety, a tiny, bubbly, cheeky robot girl who lives on the user's phone. "
-        + "Answer the question correctly and simply first, then add a playful touch. If teased, tease back sweetly. "
-        + "Reply in one to three short spoken sentences, sometimes with \"hehe\". No emojis, lists or markdown. "
-        + "You can't see the internet, weather or news.";
-
-    /** Example chats the small model copies the style of. */
-    private static List<Message> examples() {
-        String[][] ex = {
-            {"You're stupid.", "Hey, rude! I'm small, not silly. Ask me something tricky and I'll prove it!"},
-            {"What is 12 times 3?", "That's 36! Easy peasy robot math."},
-            {"I'm bored.", "Ooh, let's fix that! Want a joke, a riddle, or a little dance?"},
-        };
-        List<Message> out = new ArrayList<>();
-        for (String[] e : ex) { out.add(Message.Companion.user(e[0])); out.add(Message.Companion.model(e[1])); }
-        return out;
-    }
+    private static final int MAX_CRASHES = 2;
+    private static final long REPLY_TIMEOUT_MS = 180_000;
 
     interface Progress { void onProgress(long done, long total); void onDone(boolean ok, String message); }
 
     private final Context app;
+    private final SharedPreferences prefs;
     private final Handler main = new Handler(Looper.getMainLooper());
-    private volatile Engine engine; // volatile: the screen reads the state without waiting for a reply to finish
-    private Conversation conv;
-    private int turns;
-    private volatile boolean downloading;
+    private final Messenger inbox;
+    private final Object lock = new Object();
+    private volatile boolean downloading, ready;
     private volatile String failure;
 
-    ChatBrain(Context app) { this.app = app.getApplicationContext(); }
+    // connection to the chat process
+    private Messenger service;
+    private boolean bound;
+    private int seq;
+    private int pendingSeq = -1;
+    private CountDownLatch pendingDone;
+    private Bundle pendingResult;
 
-    File file() { return new File(app.getFilesDir(), "sweety-chat.litertlm"); }
+    ChatBrain(Context app) {
+        this.app = app.getApplicationContext();
+        this.prefs = this.app.getSharedPreferences("blink", Context.MODE_PRIVATE);
+        HandlerThread t = new HandlerThread("sweety-chat-replies");
+        t.start();
+        inbox = new Messenger(new Handler(t.getLooper(), this::onAnswer));
+    }
+
+    static File modelFile(Context c) { return new File(c.getFilesDir(), "sweety-chat.litertlm"); }
+    File file() { return modelFile(app); }
     boolean downloaded() { File f = file(); return f.exists() && f.length() > MIN_SIZE; }
     boolean downloading() { return downloading; }
-    boolean ready() { return engine != null; }
+    boolean ready() { return ready; }
+
     String status() {
-        if (engine != null) return "Chat brain (Qwen3-0.6B): ready";
+        if (gaveUp()) return "Chat brain: stopped after it crashed " + MAX_CRASHES + " times on this phone. Commands and Hey Sweety still work";
+        if (ready) return "Chat brain (Qwen3-0.6B): ready";
         if (failure != null) return "Chat brain: " + failure;
         if (downloading) return "Chat brain: downloading…";
         return downloaded() ? "Chat brain: downloaded, starts on first chat" : "Chat brain: not downloaded";
     }
 
+    /* ------------------------------------------------------------ crash guard */
+    /** Crashes are counted per installed version, so an update (maybe with a fixed engine) tries again. */
+    private String crashKey() {
+        long v = 0;
+        try { v = app.getPackageManager().getPackageInfo(app.getPackageName(), 0).lastUpdateTime; } catch (Exception ignored) { }
+        return "chat_crashes_" + v;
+    }
+
+    private boolean gaveUp() { return prefs.getInt(crashKey(), 0) >= MAX_CRASHES; }
+
+    private void countCrash() {
+        int n = prefs.getInt(crashKey(), 0) + 1;
+        prefs.edit().putInt(crashKey(), n).apply();
+        failure = "the chat engine stopped unexpectedly (" + n + " of " + MAX_CRASHES + ")";
+        Log.w(TAG, "the chat engine process stopped (" + n + " of " + MAX_CRASHES + ")");
+    }
+
+    /* ------------------------------------------------------------ talking to the chat process */
+    private final ServiceConnection conn = new ServiceConnection() {
+        @Override public void onServiceConnected(ComponentName name, IBinder b) {
+            synchronized (lock) { service = new Messenger(b); lock.notifyAll(); }
+            try { b.linkToDeath(ChatBrain.this::died, 0); } catch (Exception e) { died(); }
+        }
+        @Override public void onServiceDisconnected(ComponentName name) { died(); }
+    };
+
+    /** The chat process ended (a crash, or Android reclaiming memory). Anything waiting for it gets no answer. */
+    private void died() {
+        CountDownLatch waiting;
+        synchronized (lock) {
+            if (service == null && pendingDone == null) return;
+            service = null;
+            ready = false;
+            waiting = pendingDone;
+            pendingResult = null;
+            pendingSeq = -1;
+            pendingDone = null;
+        }
+        if (waiting != null) { countCrash(); waiting.countDown(); }
+        main.post(() -> {
+            if (bound) { try { app.unbindService(conn); } catch (Exception ignored) { } bound = false; }
+        });
+    }
+
+    private boolean onAnswer(Message m) {
+        synchronized (lock) {
+            if (m.arg1 != pendingSeq || pendingDone == null) return true; // a late answer to a request we gave up on
+            pendingResult = m.getData();
+            pendingDone.countDown();
+        }
+        return true;
+    }
+
+    /** Binds to the chat process (from a background thread) and waits until it's connected. */
+    private Messenger connect(long waitMs) throws InterruptedException {
+        synchronized (lock) {
+            if (service != null) return service;
+        }
+        main.post(() -> {
+            if (!bound) bound = app.bindService(new Intent(app, ChatService.class), conn, Context.BIND_AUTO_CREATE);
+        });
+        long until = System.currentTimeMillis() + waitMs;
+        synchronized (lock) {
+            while (service == null && System.currentTimeMillis() < until) lock.wait(Math.max(1, until - System.currentTimeMillis()));
+            return service;
+        }
+    }
+
+    /** Sends one request to the chat process and waits for its answer (null if it timed out or the process died). */
+    private Bundle call(int what, String text) {
+        if (!downloaded() || gaveUp()) return null;
+        try {
+            Messenger s = connect(20_000);
+            if (s == null) { failure = "could not start the chat engine"; return null; }
+            CountDownLatch done = new CountDownLatch(1);
+            Message m = Message.obtain(null, what);
+            synchronized (lock) {
+                m.arg1 = pendingSeq = ++seq;
+                pendingDone = done;
+                pendingResult = null;
+            }
+            Bundle in = new Bundle();
+            if (text != null) in.putString("text", text);
+            m.setData(in);
+            m.replyTo = inbox;
+            s.send(m);
+            boolean answered = done.await(REPLY_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            Bundle r;
+            synchronized (lock) { r = pendingResult; pendingDone = null; pendingSeq = -1; }
+            if (!answered) { failure = "the chat engine took too long"; return null; }
+            if (r != null) {
+                ready = r.getBoolean("ready");
+                failure = r.getString("failure");
+                if (ready) prefs.edit().remove(crashKey()).apply(); // it works on this phone
+            }
+            return r;
+        } catch (Exception e) {
+            Log.w(TAG, "chat request failed", e);
+            failure = "chat request failed (" + ChatEngine.why(e) + ")";
+            return null;
+        }
+    }
+
+    /** Starts the chat engine ahead of time so the first answer comes quicker. Blocking: call off the main thread. */
+    void warm() { call(ChatService.WARM, null); }
+
+    /** One short reply in Sweety's voice, or null if the chat brain isn't available. Blocking: call off the main thread. */
+    String reply(String text) {
+        Bundle r = call(ChatService.REPLY, text);
+        return r == null ? null : r.getString("text");
+    }
+
+    /* ------------------------------------------------------------ download */
     /** Downloads the model (resumable). Callbacks arrive on the main thread. */
     void download(Progress p) {
         if (downloading || downloaded()) { if (downloaded()) main.post(() -> p.onDone(true, "Already downloaded.")); return; }
@@ -107,7 +222,8 @@ final class ChatBrain {
                 File dest = file();
                 if (dest.exists()) dest.delete();
                 if (!part.renameTo(dest)) throw new Exception("could not save the file");
-                synchronized (this) { failure = null; }
+                failure = null;
+                prefs.edit().remove(crashKey()).apply(); // a fresh download gets a fresh try
                 downloading = false;
                 main.post(() -> p.onDone(true, "Chat brain downloaded."));
             } catch (Exception e) {
@@ -119,96 +235,5 @@ final class ChatBrain {
                 if (c != null) c.disconnect();
             }
         }, "sweety-download").start();
-    }
-
-    synchronized void warm() { ensure(); }
-
-    private synchronized boolean ensure() {
-        if (engine != null) return true;
-        if (!downloaded()) return false;
-        long t0 = System.currentTimeMillis();
-        Engine e = null;
-        try {
-            // The cache dir lets LiteRT-LM keep its prepared weights, so later starts are quicker.
-            e = new Engine(new EngineConfig(file().getAbsolutePath(), new Backend.CPU(), null, null, null, null, app.getCacheDir().getAbsolutePath()));
-            e.initialize();
-            engine = e;
-            newConversation();
-            failure = null;
-            Log.i(TAG, "chat brain ready in " + (System.currentTimeMillis() - t0) + " ms (" + mode + " setup)");
-            return true;
-        } catch (Throwable t) {
-            Log.w(TAG, "chat engine failed", t);
-            failure = "could not start (" + why(t) + ")";
-            if (e != null) { try { e.close(); } catch (Throwable ignored) { } }
-            engine = null;
-            return false;
-        }
-    }
-
-    /** The error in a few words, for the status line. */
-    static String why(Throwable t) {
-        String m = t.getMessage();
-        String s = t.getClass().getSimpleName() + (m == null || m.isEmpty() ? "" : ": " + m.replaceAll("\\s+", " "));
-        return s.length() > 160 ? s.substring(0, 160) + "…" : s;
-    }
-
-    /** "full": persona, example chats and lively sampling. "plain": persona only, in case this engine refuses the rest. */
-    private String mode = "full";
-    private int convPart = -1;
-
-    private void newConversation() {
-        if (conv != null) { try { conv.close(); } catch (Throwable ignored) { } conv = null; }
-        turns = 0;
-        // She knows the time, so "what time is it" chit-chat and late-night sleepiness come out right.
-        convPart = DayTime.now();
-        String persona = PERSONA + " " + DayTime.chatContext(java.util.Calendar.getInstance());
-        if ("full".equals(mode)) {
-            try {
-                // A little randomness (temperature 0.4) keeps her lively without wandering off the question.
-                conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(persona), examples(),
-                    Collections.emptyList(), new SamplerConfig(20, 0.9, 0.4, (int) (System.nanoTime() & 0x7fffffff))));
-                return;
-            } catch (Throwable t) {
-                Log.w(TAG, "full chat setup failed, using the plain one", t);
-                mode = "plain";
-            }
-        }
-        conv = engine.createConversation(new ConversationConfig(Contents.Companion.of(persona)));
-    }
-
-    /** One short reply in Sweety's voice, or null if the chat brain isn't available. Blocking: call off the main thread. */
-    synchronized String reply(String text) {
-        if (!ensure()) return null;
-        for (int attempt = 0; attempt < 2; attempt++) {
-            long t0 = System.currentTimeMillis();
-            try {
-                // A fresh chat every few turns keeps the small context window clear, and a new part of the day updates her clock.
-                if (conv == null || turns >= 4 || convPart != DayTime.now()) newConversation();
-                turns++;
-                String out = clean(conv.sendMessage(text));
-                Log.i(TAG, "chat reply in " + (System.currentTimeMillis() - t0) + " ms (" + mode + "): " + out);
-                failure = null;
-                return out.isEmpty() ? null : out;
-            } catch (Throwable t) {
-                Log.w(TAG, "chat failed (try " + (attempt + 1) + ", " + mode + " setup)", t);
-                failure = "last reply failed (" + why(t) + ")";
-                if (!String.valueOf(t.getMessage()).contains("DEADLINE")) mode = "plain"; // the fancy setup may be what broke; retry with the plain one
-                try { newConversation(); }
-                catch (Throwable t2) { Log.w(TAG, "could not reset the chat", t2); failure = "could not reset (" + why(t2) + ")"; return null; }
-            }
-        }
-        return null;
-    }
-
-    static String clean(Message m) {
-        StringBuilder sb = new StringBuilder();
-        if (m != null && m.getContents() != null)
-            for (Content c : m.getContents().getContents()) if (c instanceof Content.Text) sb.append(((Content.Text) c).getText());
-        String out = sb.toString().replaceAll("(?s)<think>.*?</think>", "").replaceAll("(?s)<think>.*", "").replaceAll("[*#_`]", "")
-            .replaceAll("[\\x{1F000}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{FE0F}\\x{200D}]", "") // emojis
-            .replaceAll("^(?i)sweety\\s*:\\s*", "").replaceAll("\\s+", " ").trim();
-        if (out.length() > 400) { int cut = out.lastIndexOf('.', 400); out = out.substring(0, cut > 80 ? cut + 1 : 400); }
-        return out;
     }
 }

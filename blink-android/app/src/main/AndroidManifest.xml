@@ -77,6 +77,12 @@
                 android:value="Animated companion character the user places on top of other apps" />
         </service>
 
+        <!-- The chat brain runs in its own process: if the chat engine crashes on some phone, Sweety keeps running -->
+        <service
+            android:name=".ChatService"
+            android:exported="false"
+            android:process=":chat" />
+
         <service
             android:name=".WakeService"
             android:exported="false"

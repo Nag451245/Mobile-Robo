@@ -44,6 +44,7 @@ trap 'kill $LOGPID 2>/dev/null' EXIT
 setup() { # setup <apk> <wake true|false> [chat|nochat]: fresh install, with the chat brain in place unless "nochat"
   adb uninstall $PKG >/dev/null 2>&1
   adb install -r -g "$1" >/dev/null || return 1
+  MARK=$(lines) # checks start after the old install is gone
   adb shell pm grant $PKG android.permission.RECORD_AUDIO
   adb shell pm grant $PKG android.permission.POST_NOTIFICATIONS 2>/dev/null
   printf "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <boolean name=\"wake\" value=\"%s\" />\n</map>\n" "$2" > "$OUT/blink.xml"
@@ -77,14 +78,22 @@ frozen() { # frozen <from-line> <label>: Sweety must never stop responding
   # Java crashes, and native crashes with the first frames of their backtrace (which library, which function).
   { tail -n +"$1" "$LOG" | grep -E "FATAL EXCEPTION" -A6 | head -14
     tail -n +"$1" "$LOG" | grep -E "Fatal signal|F/DEBUG.*(Abort message|signal [0-9]|#0[0-9] pc|#1[0-5] pc|name: )" | head -24; } > "$OUT/crash.txt"
-  [ -s "$OUT/crash.txt" ] && fail "$2: crash: $(sed -E 's/^.{0,40}\): *//' "$OUT/crash.txt" | sed -E 's/\/data\/app\/[^ ]*\/lib\//lib\//' | tr '\n' '|')"
-  local died; died=$(tail -n +"$1" "$LOG" | grep -E "Process $PKG .*has died|Killing [0-9]+:$PKG" | grep -vc "deletePackage")
-  [ "$died" -gt 0 ] && note "$2: Android stopped the Sweety process $died time(s): $(tail -n +"$1" "$LOG" | grep -E "Process $PKG .*has died|Killing [0-9]+:$PKG" | head -2 | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"
+  local what; what=$(sed -E 's/^.{0,40}\): *//' "$OUT/crash.txt" | sed -E 's/\/data\/app\/[^ ]*\/lib\//lib\//' | tr '\n' '|')
+  # The chat brain runs in its own process (com.blink.buddy:chat) so a crash there must not take Sweety down.
+  if [ -s "$OUT/crash.txt" ] && grep -E "FATAL EXCEPTION|Fatal signal" "$OUT/crash.txt" | grep -qv "$PKG:chat"; then fail "$2: Sweety crashed: $what"
+  elif [ -s "$OUT/crash.txt" ]; then note "$2: the chat engine crashed in its own process, Sweety kept running: $what"; fi
+  # Sweety's main process must stay alive (the chat process may restart; uninstalling between phases doesn't count).
+  local died; died=$(tail -n +"$1" "$LOG" | grep -E "Process $PKG \(pid [0-9]+\) has died" | grep -vc "deletePackage")
+  [ "$died" -gt 0 ] && fail "$2: Sweety's main process died $died time(s): $(tail -n +"$1" "$LOG" | grep -E "Process $PKG \(pid [0-9]+\) has died" | head -2 | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"
+  local chatDied; chatDied=$(tail -n +"$1" "$LOG" | grep -cE "Process $PKG:chat \(pid [0-9]+\) has died")
+  [ "$chatDied" -gt 0 ] && note "$2: the chat process ended $chatDied time(s); Sweety said: $(found "$1" "SweetyChat.*(engine process stopped|chat engine failed)" 2 | tr '\n' '|')"
+  return 0
 }
 
 # ================================================================ Phase A: chat brain answers (native x86_64)
 A=$(lines)
 if setup "$APK_X86" false; then
+  A=$MARK
   note "phase A: x86_64 build installed"
   sleep 5
   ask "What is the capital of France?" "paris" 600
@@ -123,9 +132,12 @@ else fail "could not install the x86_64 build"; fi
 
 # ================================================================ Phase B: the real phone build
 B=$(lines)
-if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true nochat; then
+if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
+  B=$MARK
   note "phase B: arm64 phone build installed (runs under ARM translation, so it's slow)"
   wait_for "$B" "SweetyBrain.*Whistle warmed up" 900 && note "phase B: $(found "$B" "SweetyBrain.*Whistle warmed up")"
+  # The chat brain starts in its own process; wait until it is up (or has crashed there) before the Hey Sweety checks.
+  wait_for "$B" "SweetyChat.*(ready in|engine process stopped|chat engine failed)" 600 && note "phase B chat brain: $(found "$B" "SweetyChat.*(ready in|engine process stopped|chat engine failed)")"
   sleep 5
   adb exec-out screencap -p > "$OUT/B-app.png"
   adb shell dumpsys activity services $PKG | grep -q WakeService && pass "Hey Sweety listener is running" || fail "Hey Sweety listener did not start"
@@ -168,6 +180,13 @@ if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true nochat; then
   done
   adb shell dumpsys notification --noredact 2>/dev/null | grep -A30 "sweety_wake" | grep -E "android.(title|text|bigText)=" | head -3 | sed 's/^ */      notification: /' | tee -a "$SUM"
 
+  # Whatever the chat engine did, asking Sweety something must still get an answer (a real one, or a polite "can't here").
+  adb shell am start -W -n $PKG/.MainActivity >/dev/null
+  sleep 3
+  from=$(lines)
+  adb shell am start -n $PKG/.TalkActivity --es ask "'What is the capital of France?'" >/dev/null 2>&1
+  if wait_for "$from" "Sweety .*reply \[" 900; then pass "she still answers a chat question: $(found "$from" "Sweety .*reply \[")"
+  else fail "no answer at all to a chat question: $(found "$from" "SweetyChat|Sweety " 4 | tr '\n' '|')"; fi
   adb exec-out screencap -p > "$OUT/B-end.png"
   adb shell dumpsys activity services $PKG | grep -q WakeService && pass "Hey Sweety listener still running at the end" || fail "Hey Sweety listener stopped"
   frozen "$B" "phase B"

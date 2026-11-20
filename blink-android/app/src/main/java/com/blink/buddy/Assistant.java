@@ -442,6 +442,7 @@ final class Assistant {
         else if (s.contains("love you")) reply(host, "Aww, I love you too!", "jump", "love");
         else if (s.contains("what can you do") || s.contains("help")) reply(host, "I can set alarms, timers and reminders, call or text people, switch the torch, control your music, tell the time, date or battery, take notes, dance, and chat with you!", "wave", "happy");
         else if (!chatBrain.downloaded()) reply(host, "I can't chat about that yet. Download my chat brain in the Sweety app and I'll get much smarter!", "shrug", "curious");
+        else if (chatBrain.status().contains("stopped after")) reply(host, "Sorry, my chat brain doesn't work on this phone. I can still do alarms, calls, music, tricks and more!", "shrug", "sad");
         else reply(host, "Hmm, my chat brain hiccuped. " + chatBrain.status() + ". Try asking again?", "shrug", "curious");
     }
 
