@@ -20,6 +20,13 @@ android {
         }
     }
 
+    // Floating Blink renders the same 3D character as the desktop and web versions.
+    sourceSets {
+        main {
+            assets.srcDirs = ['src/main/assets', '../../blink-mobile/vendor', '../../blink-mobile/src']
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17

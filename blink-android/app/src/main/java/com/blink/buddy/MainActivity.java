@@ -1,6 +1,10 @@
 package com.blink.buddy;
 
+import android.Manifest;
 import android.app.Activity;
+import android.content.pm.PackageManager;
+import android.net.Uri;
+import android.os.Build;
 import android.app.WallpaperManager;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
@@ -55,7 +59,23 @@ public class MainActivity extends Activity {
         preview.setClipToOutline(true);
         col.addView(preview, lp);
 
-        Button set = button("Set Blink as my wallpaper", true);
+        col.addView(header("Floating Blink (like the desktop version)"));
+        col.addView(text("Blink walks, flies and perches on top of your home screen and apps. Drag it anywhere, flick to throw, tap to poke, double-tap for a new outfit, long-press to come back here. It hides itself in landscape (videos and games).", 14, false));
+        Button start = button("Start floating Blink", true);
+        start.setOnClickListener(v -> startFloating());
+        col.addView(start, full(px(10)));
+        Button stop = button("Stop floating Blink", false);
+        stop.setOnClickListener(v -> { stopService(new Intent(this, OverlayService.class)); toast("Floating Blink stopped."); });
+        col.addView(stop, full(px(8)));
+        String[][] sizes = {{"100", "Small"}, {"120", "Medium"}, {"150", "Large"}};
+        col.addView(chipRow(sizes, id -> {
+            prefs.edit().putInt("floatSize", Integer.parseInt(id)).apply();
+            if (OverlayService.running) { stopService(new Intent(this, OverlayService.class)); startFloating(); }
+            toast("Size saved.");
+        }));
+
+        col.addView(header("Wallpaper (home and lock screen)"));
+        Button set = button("Set Blink as my wallpaper", false);
         set.setOnClickListener(v -> setWallpaper());
         col.addView(set, full(px(12)));
         col.addView(text("Tip: when asked, choose \"Home and lock screens\" so Blink shows up on both. Some phones (for example many Samsung models) only allow live wallpapers on the home screen.", 13, false));
@@ -94,6 +114,20 @@ public class MainActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         scroll.addView(col);
         setContentView(scroll);
+    }
+
+    private void startFloating() {
+        if (!Settings.canDrawOverlays(this)) {
+            toast("Turn on \"Allow display over other apps\" for Blink, then come back and tap Start again.");
+            try { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()))); }
+            catch (ActivityNotFoundException e) { startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)); }
+            return;
+        }
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 7);
+        }
+        startForegroundService(new Intent(this, OverlayService.class));
+        toast("Blink is floating! Go to your home screen.");
     }
 
     private void setWallpaper() {
