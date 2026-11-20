@@ -122,7 +122,9 @@ jobs:
           S=app/src/main/java/com/blink/buddy
           javac -d ht -cp ht/json.jar test/java/android/graphics/Color.java test/java/com/blink/buddy/HostTest.java \
             $S/WakePhrase.java $S/RuleBrain.java $S/Call.java $S/Skin.java
-          java -cp ht:ht/json.jar com.blink.buddy.HostTest
+          mkdir -p logs
+          set -o pipefail
+          java -cp ht:ht/json.jar com.blink.buddy.HostTest 2>&1 | tee logs/1-rules.log
 
       - name: Record the test phrases (several voices, quiet and noisy)
         run: bash test/make_speech.sh test/wake_phrases.tsv speech
@@ -135,6 +137,8 @@ jobs:
             blink-android/speech/list.tsv
 
       - name: Build the Cactus test program (Linux build of the same runtime)
+        id: harness
+        continue-on-error: true
         run: |
           mkdir -p cx
           curl -fsSL --retry 3 -o cx/libcactus.a "$CACTUS/linux-x86_64/libcactus.a"
@@ -142,20 +146,30 @@ jobs:
           curl -fsSL --retry 3 -o cx/needle3.cact "$HF/needle3/resolve/main/needle3.cact"
           curl -fsSL --retry 3 -o cx/whistle.cact "$HF/whistle/resolve/main/whistle.cact"
           java -cp ht:ht/json.jar com.blink.buddy.HostTest tools > tools.json
-          g++ -O2 -std=c++17 -Icx test/cactus_host.cpp -o cactus_host -Wl,--start-group cx/libcactus.a -Wl,--end-group -lpthread -ldl -lm -fopenmp \
-            || g++ -O2 -std=c++17 -Icx test/cactus_host.cpp -o cactus_host cx/libcactus.a -lpthread -ldl -lm -lcurl -fopenmp
+          ls -la cx; file cx/libcactus.a; ar t cx/libcactus.a | head -5
+          g++ -O2 -std=c++17 -Icx test/cactus_host.cpp -o cactus_host -Wl,--start-group cx/libcactus.a -Wl,--end-group -lpthread -ldl -lm -fopenmp > logs/2-gcc.log 2>&1 \
+            || g++ -O2 -std=c++17 -Icx test/cactus_host.cpp -o cactus_host cx/libcactus.a -lpthread -ldl -lm -lcurl -fopenmp >> logs/2-gcc.log 2>&1 \
+            || { grep -oE "undefined reference to .[^']+" logs/2-gcc.log | sort | uniq -c | sort -rn | head -40 > logs/2-gcc-missing.log; exit 1; }
 
       - name: Whistle hears the recordings, and "Hey Sweety" is found in them
+        if: steps.harness.outcome == 'success'
         continue-on-error: true
         run: |
-          ./cactus_host hear cx/whistle.cact cx/needle3.cact speech/list.tsv | tee transcripts.tsv
-          java -cp ht:ht/json.jar com.blink.buddy.HostTest transcripts.tsv
+          set -o pipefail
+          ./cactus_host hear cx/whistle.cact cx/needle3.cact speech/list.tsv 2>logs/3-hear-stderr.log | tee transcripts.tsv
+          java -cp ht:ht/json.jar com.blink.buddy.HostTest transcripts.tsv 2>&1 | tee logs/3-hear.log
 
       - name: Needle 3 + rules send commands to actions and small talk to the chat brain
+        if: steps.harness.outcome == 'success'
         continue-on-error: true
         run: |
-          ./cactus_host think cx/whistle.cact cx/needle3.cact test/routing.tsv | tee needle.tsv
-          java -cp ht:ht/json.jar com.blink.buddy.HostTest needle needle.tsv
+          set -o pipefail
+          ./cactus_host think cx/whistle.cact cx/needle3.cact test/routing.tsv 2>logs/4-think-stderr.log | tee needle.tsv
+          java -cp ht:ht/json.jar com.blink.buddy.HostTest needle needle.tsv 2>&1 | tee logs/4-think.log
+
+      - name: Post the results
+        if: always()
+        run: for f in logs/*.log; do bash test/annotate.sh notice "$(basename "$f")" "$f" 5000; done
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -167,6 +181,7 @@ jobs:
 
   emulator:
     needs: [build, host-tests]
+    if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -214,6 +229,13 @@ jobs:
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none
           script: bash blink-android/test/emulator_test.sh Sweety.apk Sweety-x86_64.apk $HOME/qwen/chat.litertlm speech emu-out
+
+      - name: Post the results
+        if: always()
+        run: |
+          bash blink-android/test/annotate.sh notice "api${{ matrix.api }} summary" emu-out/summary.txt 8000
+          grep -E "/Sweety|FATAL|AndroidRuntime|litert" emu-out/logcat.txt | grep -v "mic: loudest" > emu-out/sweety-log.txt || true
+          bash blink-android/test/annotate.sh notice "api${{ matrix.api }} sweety log" emu-out/sweety-log.txt 12000
 
       - uses: actions/upload-artifact@v4
         if: always()
