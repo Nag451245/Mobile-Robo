@@ -25,7 +25,25 @@ android {
         }
     }
 
+    // Permanent signing key, so every new build installs over the old one.
+    // The CI build writes it from the SWEETY_KEYSTORE_B64 / SWEETY_KEY_PASSWORD repository secrets.
+    def sweetyKeystore = System.getenv('SWEETY_KEYSTORE')
+    def sweetyPassword = System.getenv('SWEETY_KEY_PASSWORD')
+    signingConfigs {
+        sweety {
+            if (sweetyKeystore && sweetyPassword) {
+                storeFile file(sweetyKeystore)
+                storePassword sweetyPassword
+                keyAlias 'sweety'
+                keyPassword sweetyPassword
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            if (sweetyKeystore && sweetyPassword) signingConfig signingConfigs.sweety
+        }
         release {
             minifyEnabled false
         }

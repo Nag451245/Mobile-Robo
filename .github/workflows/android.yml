@@ -28,13 +28,6 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      # Keeps the same signing key between builds, so a new APK installs over the old one.
-      - name: Reuse the debug signing key
-        uses: actions/cache@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: blink-debug-keystore-v1
-
       # Sweety's offline brain, all by Cactus Compute (Apache-2.0):
       # Cactus 4 runtime + Needle 3 (understands requests, calls tools) + Whistle (speech to text).
       - name: Fetch Cactus runtime, Needle 3 and Whistle
@@ -49,8 +42,22 @@ jobs:
           curl -fsSL --retry 3 -o src/main/assets/CACTUS_LICENSE.txt "$hf/needle3/resolve/main/LICENSE"
           ls -la cactus/arm64-v8a src/main/assets
 
+      - name: Use the permanent signing key (from repository secrets)
+        env:
+          KS: ${{ secrets.SWEETY_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/sweety.jks"
+            echo "SWEETY_KEYSTORE=$RUNNER_TEMP/sweety.jks" >> "$GITHUB_ENV"
+            echo "Signing with the permanent Sweety key."
+          else
+            echo "::warning::SWEETY_KEYSTORE_B64 secret not set; using a temporary key, so this APK will not install over older builds."
+          fi
+
       - name: Build the APK
         working-directory: blink-android
+        env:
+          SWEETY_KEY_PASSWORD: ${{ secrets.SWEETY_KEY_PASSWORD }}
         run: |
           set -o pipefail
           gradle assembleDebug --no-daemon --console=plain 2>&1 | tee build.log
