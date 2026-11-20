@@ -16,6 +16,8 @@ final class WakePhrase {
         "i", "ah", "aye", "high", "hie", "his", "hes", "he's", "hase", "haze", "hays", "hay's", "hey's", "heys", "hies"};
     /** Greetings Whistle wrote with the "s" of "Sweety" stuck on ("hey sweety" -> "his weedy", "hase witty"). */
     private static final String[] S_GREETINGS = {"his", "hes", "he's", "hase", "haze", "hays", "hay's", "hey's", "heys", "hies"};
+    /** Everyday words ending in s that never hide the start of her name. */
+    private static final String[] COMMON_S = {"was", "is", "this", "yes", "does", "has", "its", "it's", "as", "us", "thus", "plus", "less", "miss", "kiss", "guess", "boss", "class", "always"};
     /** Words that look like her name to the sound rules but are everyday words. */
     private static final String[] NOT_NAME = {"sweet", "sweets", "suit", "suits", "set", "sit", "seat", "street", "state", "sweat", "swat", "sweater", "sweden",
         "swiggy", "switch", "swim", "swing", "swear", "sweep", "swift", "south", "stay", "story", "start", "stop", "store", "site", "sweetly"};
@@ -33,10 +35,15 @@ final class WakePhrase {
         for (int i = 0; i < words.size(); i++) {
             boolean greeted = i > 0 && greeting(words.get(i - 1));
             boolean atStart = i == 0 || (i == 1 && ("a".equals(words.get(0)) || greeting(words.get(0))));
-            if (!greeted && !atStart) continue;
-            int len = nameLength(words, i, greeted);
+            // Her exact name early in the phrase counts even after a garbled greeting ("well, kate sweety" = "okay sweety").
+            boolean early = i <= 2 && exact(words.get(i)) && !(i > 0 && "a".equals(words.get(i - 1)) && i > 1);
+            // "a lus weady" = "hello sweety": a word ending in s took the s of her name
+            boolean sShift = i > 0 && i <= 2 && words.get(i).matches("w\\w*(y|ie|ee|i)") && words.get(i - 1).endsWith("s")
+                && !isAny(words.get(i - 1), COMMON_S);
+            if (!greeted && !atStart && !early && !sShift) continue;
+            int len = early ? 1 : greeted || atStart ? nameLength(words, i, greeted) : 0;
             // "his weedy", "hase witty": the s went to the greeting
-            if (len == 0 && greeted && words.get(i).startsWith("w") && isAny(words.get(i - 1), S_GREETINGS)) {
+            if (len == 0 && (sShift || greeted && isAny(words.get(i - 1), S_GREETINGS)) && words.get(i).startsWith("w")) {
                 List<String> fixed = new ArrayList<>(words);
                 fixed.set(i, "s" + words.get(i));
                 len = nameLength(fixed, i, true);
