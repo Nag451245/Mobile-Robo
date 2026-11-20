@@ -100,7 +100,8 @@ final class Assistant {
             needle.ensure(app);
             String text = needle.transcribe(pcm, KEYWORDS);
             if ((text == null || text.isEmpty()) && KEYWORDS != null) text = needle.transcribe(pcm, null); // in case the keyword hint is refused
-            main.post(() -> cb.onText(text));
+            final String heard = text;
+            main.post(() -> cb.onText(heard));
         });
     }
 
