@@ -109,6 +109,25 @@ if setup "$APK_X86" false; then
   ask "Are you dumb?" "[a-z]" 300
   ask "Tell me about the moon." "moon|earth|night|sky|space|orbit|light" 300
   SOFT=1 ask "Why do cats purr?" "cat|purr|happy|content|relax|vibrat" 300 # harder fact for a tiny model: reported, not required
+  # Floating Sweety tricks: catch a butterfly / bird (she must chase, miss once, catch, let it go), hide and come back.
+  adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow
+  trick() { # trick <what she's asked> <label> <log that must follow> <seconds> [regex the sequence must match]
+    local from; from=$(lines)
+    adb shell am start -n $PKG/.TalkActivity --es ask "'$1'" >/dev/null 2>&1
+    sleep 6; adb exec-out screencap -p > "$OUT/A-$2.png"
+    if wait_for "$from" "$3" "$4"; then
+      local seq; seq=$(tail -n +"$from" "$LOG" | grep -oE "SweetyOverlay.*chase: [a-z]+" | sed -E 's/.*chase: //' | tr '\n' ' ')
+      if [ -z "${5:-}" ] || echo "$seq" | grep -qE "$5"; then pass "$2: $(found "$from" "Sweety .*reply \[") ${seq:+| chase: $seq}"
+      else fail "$2: wrong order: $seq"; fi
+    else fail "$2: $(found "$from" "SweetyOverlay|Sweety " 6 | tr '\n' '|')"; fi
+    sleep 3
+  }
+  trick "Catch the butterfly" "catch the butterfly" "SweetyOverlay.*chase: done" 90 "^dodge caught free done"
+  trick "Catch the bird" "catch the bird" "SweetyOverlay.*chase: done" 90 "^dodge caught free done"
+  trick "Hide" "hide" "SweetyOverlay.*hiding" 30
+  trick "Come back" "come back" "SweetyOverlay.*showing" 30
+  adb shell am stopservice -n $PKG/.OverlayService >/dev/null 2>&1
+
   # Time of day: set the phone clock and check her greeting changes with it.
   adb shell settings put global auto_time 0 >/dev/null 2>&1
   timed_hi() { # timed_hi <MMDDhhmm> <label> <what she says> <regex>

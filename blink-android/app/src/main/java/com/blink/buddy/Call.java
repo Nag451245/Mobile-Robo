@@ -41,8 +41,8 @@ final class Call {
         + "\"item\":{\"type\":\"string\",\"enum\":[\"battery\",\"time\",\"date\"]}},\"required\":[\"item\"]}},"
         + "{\"name\":\"take_note\",\"description\":\"Write down a note to remember\",\"parameters\":{\"type\":\"object\",\"properties\":{"
         + "\"text\":{\"type\":\"string\",\"description\":\"The note\"}},\"required\":[\"text\"]}},"
-        + "{\"name\":\"sweety_fun\",\"description\":\"Make Sweety the robot dance, wave, jump, spin, do a backflip or cartwheel, laugh, tell a joke, sleep or change outfit\",\"parameters\":{\"type\":\"object\",\"properties\":{"
-        + "\"action\":{\"type\":\"string\",\"enum\":[\"dance\",\"wave\",\"jump\",\"spin\",\"flip\",\"cartwheel\",\"laugh\",\"joke\",\"sleep\",\"outfit\"]},\"outfit\":{\"type\":\"string\",\"description\":\"Outfit name like kitty, bunny, panda, sunny\"}},\"required\":[\"action\"]}}"
+        + "{\"name\":\"sweety_fun\",\"description\":\"Make Sweety the robot dance, wave, jump, spin, do a backflip or cartwheel, laugh, tell a joke, sleep, change outfit, catch a butterfly or bird, hide, or come back\",\"parameters\":{\"type\":\"object\",\"properties\":{"
+        + "\"action\":{\"type\":\"string\",\"enum\":[\"dance\",\"wave\",\"jump\",\"spin\",\"flip\",\"cartwheel\",\"laugh\",\"joke\",\"sleep\",\"outfit\",\"catch\",\"hide\",\"show\"]},\"outfit\":{\"type\":\"string\",\"description\":\"Outfit name like kitty, bunny, panda, sunny\"},\"critter\":{\"type\":\"string\",\"enum\":[\"butterfly\",\"bird\"],\"description\":\"What to catch\"}},\"required\":[\"action\"]}}"
         + "]";
 
     static final String SYSTEM_PROMPT = "You are Sweety, a cute robot assistant on an Android phone. Pick the tool that does what the user asks.";

@@ -490,6 +490,7 @@ final class Blink {
             for (int i = timers.size() - 1; i >= 0; i--) if (timers.get(i).at <= t) due.add(0, timers.remove(i));
             for (Tm m : due) if (m.seq == seq) m.fn.run();
         }
+        updateCritter(dt);
         if (t > nextMinute) { nextMinute = t + 30; if (visible && !locked) bedtimeSkin(); if (bgNight != night()) bgDirty = true; }
 
         // idle life
@@ -692,6 +693,8 @@ final class Blink {
         }
 
         painter.drawRobot(c, this, sx, y + bob);
+        Critter k = critter;
+        if (k != null) critterArt.draw(c, k.kind, k.x, k.y, k.size, k.t, k.faceLeft, k.state == Critter.CAUGHT);
 
         for (Prop p : props) drawProp(c, p, sx, y + bob, headTop);
 
@@ -774,10 +777,41 @@ final class Blink {
         pp.setAlpha(255);
     }
 
-    /** Animation cue from the assistant: an action name (or "outfit:id", "sleep") plus an emotion. */
+    /* ------------------------------------------------------------ "catch the butterfly / bird" */
+    private Critter critter;
+    private final CritterArt critterArt = new CritterArt();
+
+    void startChase(String kind) {
+        interrupt(); sleeping = false;
+        float top = Math.max(90 * dp, groundY - hPx() * 3.2f), bottom = groundY - hPx() * 1.1f;
+        critter = new Critter(kind, W, H, top, Math.max(top + 40 * dp, bottom), u * 1.1f, rnd);
+        play("jump"); setEmotion("surprised", 1.5f);
+        say(critter.startLine(rnd), 2.4f);
+    }
+
+    /** Each frame of a chase: the critter flutters, Sweety flies after it with her hands up. */
+    private void updateCritter(float dt) {
+        Critter k = critter;
+        if (k == null) return;
+        float hx = screenX(), hy = y - hPx() * .6f;
+        String ev = k.step(dt, hx, hy, u * 1.3f);
+        if (k.state <= Critter.FLUTTER) flyTo(k.x + scroll, k.y + hPx() * .6f, null);
+        if (ev == null) return;
+        switch (ev) {
+            case "dodge": play("shrug"); setEmotion("surprised", 1.6f); say(k.dodgeLine(rnd), 1.8f); break;
+            case "caught": mode = HOVER; play("jump"); setEmotion("love", 2.6f); say(k.caughtLine(rnd), 2.4f); break;
+            case "free": play("wave"); setEmotion("happy", 2.4f); say(k.freeLine(rnd), 2.2f); break;
+            case "done": critter = null; nextIdle = t + 10; flyTo(x, groundY, null); break;
+            default:
+        }
+    }
+
+    /** Animation cue from the assistant: an action name (or "outfit:id", "catch:kind", "sleep") plus an emotion. */
     void cue(String act, String emotion) {
         if (act != null) {
             if (act.startsWith("outfit:")) { interrupt(); wear(Skin.byId(act.substring(7)), true); }
+            else if (act.startsWith("catch:")) { startChase(act.substring(6)); return; }
+            else if ("hide".equals(act) || "show".equals(act)) { sleeping = false; play("wave"); }
             else if ("sleep".equals(act)) { interrupt(); sleeping = true; emoUntil = Float.MAX_VALUE; }
             else { sleeping = false; play(act); }
         }

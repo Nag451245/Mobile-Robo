@@ -6,6 +6,7 @@
 <title>Blink</title>
 <style>
   html,body{margin:0;height:100%;background:transparent;overflow:hidden;user-select:none;font-family:"Segoe UI",system-ui,sans-serif}
+  #fx{position:fixed;inset:0;width:100%;height:100%;pointer-events:none}
   #c{position:fixed;inset:0;width:100%;height:100%;display:block;transition:opacity .45s}
   .bubble.list{max-width:360px;font-size:12.5px;white-space:pre;font-family:Consolas,"Segoe UI",monospace}
   .bubble{position:fixed;left:0;top:0;max-width:240px;background:#fff;color:#2a1d40;border:2px solid #f3c6dc;padding:8px 13px;border-radius:16px;font-size:13.5px;line-height:1.35;box-shadow:0 6px 18px rgba(40,20,70,.22);pointer-events:none;opacity:0;transition:opacity .2s}
@@ -20,6 +21,7 @@
 </head>
 <body>
   <canvas id="c"></canvas>
+  <canvas id="fx"></canvas>
   <div id="bubble" class="bubble"></div>
   <div id="palette" hidden>
     <input id="cmd" placeholder="Ask Blink: dance, wear the kitty, joke…" autocomplete="off" spellcheck="false">
@@ -27,6 +29,7 @@
   </div>
   <script src="../node_modules/three/build/three.min.js"></script>
   <script src="blink.js"></script>
+  <script src="critter.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

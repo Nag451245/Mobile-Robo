@@ -31,6 +31,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -282,6 +283,7 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
         Bus.removeSweety(this);
         try { if (root != null) wm.removeView(root); } catch (Exception ignored) { }
         try { if (bubble != null) wm.removeView(bubble); } catch (Exception ignored) { }
+        endChase();
         if (web != null) web.destroy();
         super.onDestroy();
     }
@@ -343,6 +345,7 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
         if (hidden && hideUntil > 0 && System.currentTimeMillis() > hideUntil) show();
         if (bubble != null && bubble.getVisibility() == View.VISIBLE && now > bubbleUntil) bubble.setVisibility(View.GONE);
         if (hidden || landscapeHidden) { h.postDelayed(tick, 500); return; }
+        updateCritter(dt);
 
         float walk = 0, fly = 0, face = 0, tilt = 0;
         float gy = groundY();
@@ -384,7 +387,7 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
         String mv = "B.move(" + walk + "," + fly + "," + round2(face) + "," + round2(tilt) + ")";
         if (!mv.equals(lastMove)) { lastMove = mv; js(mv); }
         place();
-        if (mode == STAND && now > nextIdle) idle(now);
+        if (mode == STAND && now > nextIdle && critter == null) idle(now);
         h.postDelayed(tick, mode == STAND ? 50 : 33);
     }
 
@@ -443,7 +446,78 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
         }
     }
 
+    /* ------------------------------------------------------------ "catch the butterfly / bird" */
+    private Critter critter;
+    private CritterArt.CritterView critterView;
+    private WindowManager.LayoutParams clp;
+
+    private void startChase(String kind) {
+        if (hidden) show();
+        endChase();
+        float top = topInset + winH, bottom = groundY() - winH * .6f;
+        critter = new Critter(kind, sw, sh, top, Math.max(top + px(60), bottom), px(44), rnd);
+        int box = px(56);
+        critterView = new CritterArt.CritterView(this);
+        critterView.critter = critter;
+        // Not touchable and see-through, so it never gets in the way of the app below.
+        clp = new WindowManager.LayoutParams(box, box, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT);
+        clp.gravity = Gravity.TOP | Gravity.START;
+        clp.alpha = .8f;
+        placeCritter();
+        try { wm.addView(critterView, clp); } catch (Exception e) { Log.w("SweetyOverlay", "no critter window", e); critter = null; critterView = null; return; }
+        speed = 1.3f;
+        act("B.sleep(false);B.play('jump');B.emote('surprised',1.5)");
+        Log.i("SweetyOverlay", "chase started: " + critter.kind);
+    }
+
+    private void placeCritter() {
+        if (critter == null || clp == null) return;
+        clp.x = Math.round(critter.x - clp.width / 2f);
+        clp.y = Math.round(critter.y - clp.height / 2f);
+    }
+
+    /** Each frame of a chase: the critter flutters, Sweety flies after it with her hands up. */
+    private void updateCritter(float dt) {
+        if (critter == null) return;
+        float handX = x, handY = y - winH * .55f;
+        String ev = critter.step(dt, handX, handY, winW * .45f);
+        placeCritter();
+        try { wm.updateViewLayout(critterView, clp); } catch (Exception ignored) { }
+        critterView.invalidate();
+        if (mode != DRAG && mode != FALL && critter.state <= Critter.FLUTTER) {
+            tx = Math.max(winW * .4f, Math.min(sw - winW * .4f, critter.x));
+            ty = Math.max(topInset + winH * .8f, Math.min(groundY(), critter.y + winH * .55f));
+            mode = FLY; arrive = null;
+        }
+        if (ev == null) return;
+        Log.i("SweetyOverlay", "chase: " + ev + " (" + critter.kind + ")");
+        switch (ev) {
+            case "dodge": act("B.play('shrug');B.emote('surprised',1.6)"); say(critter.dodgeLine(rnd), 1800); break;
+            case "caught":
+                mode = STAND; tx = x; ty = y;
+                act("B.play('jump');B.emote('love',2.6)"); say(critter.caughtLine(rnd), 2400);
+                if (Assistant.get(this).voiceOn()) Sounds.play("giggle");
+                break;
+            case "free": act("B.play('wave');B.emote('happy',2.4)"); say(critter.freeLine(rnd), 2200); break;
+            case "done":
+                endChase();
+                speed = 1;
+                if (y < groundY() - 2) flyTo(x, groundY(), () -> act("B.play('giggle',.5)"));
+                nextIdle = SystemClock.uptimeMillis() + 12000;
+                break;
+            default:
+        }
+    }
+
+    private void endChase() {
+        if (critterView != null) { try { wm.removeView(critterView); } catch (Exception ignored) { } }
+        critterView = null; critter = null; clp = null;
+    }
+
     private void hideFor(long ms) {
+        endChase();
         hidden = true; hideUntil = System.currentTimeMillis() + ms;
         if (root != null) root.setVisibility(View.GONE);
         if (bubble != null) bubble.setVisibility(View.GONE);
@@ -451,6 +525,7 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
 
     private void show() {
         hidden = false; hideUntil = 0;
+        Log.i("SweetyOverlay", "showing");
         if (root != null && !landscapeHidden) root.setVisibility(View.VISIBLE);
         act("B.play('jump');B.emote('happy',2)");
         say("I'm back!", 1800);
@@ -544,7 +619,15 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
     public void onSweety(String text, String action, String emotion) {
         h.post(() -> {
             if (root == null) return;
+            if ("show".equals(action)) { if (hidden) show(); else { act("B.play('wave');B.emote('happy',2)"); say("I'm right here!", 1800); } nextIdle = SystemClock.uptimeMillis() + 15000; return; }
             if (text != null) say(text, Math.max(2500, text.length() * 70L));
+            if ("hide".equals(action)) {
+                // Wave goodbye first, then tuck away for 30 minutes (or until "Hey Sweety, come back").
+                act("B.play('wave');B.emote('happy',2)");
+                h.postDelayed(() -> { hideFor(30 * 60_000L); Log.i("SweetyOverlay", "hiding"); }, 2200);
+                return;
+            }
+            if (action != null && action.startsWith("catch:")) { startChase(action.substring(6)); return; }
             if (action != null) {
                 if (action.startsWith("outfit:")) { String id = action.substring(7); prefs.edit().putString("skin", id).apply(); act("B.wear('" + id + "')"); }
                 else if ("sleep".equals(action)) act("B.sleep(true)");

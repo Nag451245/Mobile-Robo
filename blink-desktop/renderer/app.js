@@ -4,6 +4,8 @@
 "use strict";
 const api=window.blink;
 let settings=await api.getSettings();
+const fx=document.getElementById('fx'),fxg=fx.getContext('2d');
+let critter=null,fxDirty=false;
 const canvas=document.getElementById('c'),bubble=document.getElementById('bubble'),palette=document.getElementById('palette'),input=document.getElementById('cmd');
 
 const renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true,powerPreference:'low-power'});
@@ -26,7 +28,7 @@ const scheduleOutfit=()=>{const r=OUTFIT[settings.autoOutfit];st.nextOutfit=r?st
 const scheduleAntic=()=>{const r=MODE[settings.mode]||MODE.lively;st.nextAntic=st.t+rand(r[0],r[1]);};
 scheduleOutfit();scheduleAntic();
 
-function resize(){W=innerWidth;H=innerHeight;renderer.setSize(W,H,false);cam.left=0;cam.right=W;cam.top=H;cam.bottom=0;cam.updateProjectionMatrix();if(st.mode==='ground')st.y=H;st.x=clamp(st.x,30,W-30);st.y=Math.min(st.y,H);}
+function resize(){W=innerWidth;H=innerHeight;fx.width=W;fx.height=H;fxDirty=true;renderer.setSize(W,H,false);cam.left=0;cam.right=W;cam.top=H;cam.bottom=0;cam.updateProjectionMatrix();if(st.mode==='ground')st.y=H;st.x=clamp(st.x,30,W-30);st.y=Math.min(st.y,H);}
 addEventListener('resize',resize);resize();
 
 /* ---------- particles in screen space (jet puffs, vanish bursts) ---------- */
@@ -43,7 +45,7 @@ let seq=0,timers=[];
 const later=(s,fn)=>{const my=seq;timers.push({at:st.t+s,fn,my});};
 const guard=fn=>{const my=seq;return ()=>{if(my===seq&&fn)fn();};};
 function restoreVisible(){if(st.mode==='infile'||st.vanishT<1){st.vanishT=1;st.vanish=Math.max(st.vanish,.05);if(st.mode==='infile'){st.mode=st.y>=H-2?'ground':'hover';if(st.mode==='ground')st.y=H;}if(st.state==='INFILE')st.state='IDLE';}}
-function interrupt(){seq++;timers=[];restoreVisible();st.target=null;if(st.fly){st.fly=null;st.mode=st.y>=H-2?'ground':'hover';if(st.mode==='ground')st.y=H;}if(bot.action&&bot.action!=='change')bot.stop();}
+function interrupt(){seq++;timers=[];if(critter){critter=null;fxDirty=true;}restoreVisible();st.target=null;if(st.fly){st.fly=null;st.mode=st.y>=H-2?'ground':'hover';if(st.mode==='ground')st.y=H;}if(bot.action&&bot.action!=='change')bot.stop();}
 const hPx=()=>HF*base*st.scale;
 const short=n=>{n=String(n||'that file');return n.length>26?n.slice(0,24)+'…':n;};
 function say(text,s=2.8,list=false){bubble.classList.toggle('list',list);bubble.textContent=text;bubble.classList.add('on');st.bubbleUntil=st.t+s;}
@@ -141,7 +143,7 @@ function perform(name){if(st.snoozed)return;begin();
     case 'dive':st.state='ANTIC';diveSomewhere();break;
     case 'test-vanishcut':vanishInto(st.x,st.y-hPx()/2,()=>later(4,()=>appearAt(st.x,st.y)));setTimeout(()=>perform('wave'),200);break;
     case 'test-infilecut':vanishInto(st.x,st.y-hPx()/2,()=>later(4,()=>appearAt(st.x,st.y)));setTimeout(()=>{seq++;timers=[];},1500);break;
-    case 'help':bot.play('nod');say('Try: dance, wave, jump, spin, joke, stretch, time, nap, come here, hide in a file, wear the kitty, change outfit, bigger, smaller, hide. Ctrl+Alt+/ lists my keyboard shortcuts.',8);done(1.5);break;
+    case 'help':bot.play('nod');say('Try: catch the butterfly, catch the bird, dance, wave, jump, spin, joke, stretch, time, nap, come here, hide in a file, wear the kitty, change outfit, bigger, smaller, hide. Ctrl+Alt+/ lists my keyboard shortcuts.',8);done(1.5);break;
     default:bot.play('shrug');bot.setEmotion('curious',2.2);say("I don't know that one yet. Try: dance, joke, wear the kitty.",3.5);done(1.9);
   }}
 function emote(e){bot.setEmotion(e,3.5);if(e==='surprised')bot.play('jump');else if(e==='dizzy')bot.play('spin');else if(e==='curious')bot.play('shrug');else bot.play('giggle');}
@@ -151,7 +153,24 @@ function setSize(sz){settings.size=sz;api.saveSettings({size:sz});base=SIZES[sz]
 function grow(d){const order=['S','M','L'],i=clamp(order.indexOf(settings.size)+d,0,2);if(order[i]===settings.size){say(d>0?"I'm as big as I get!":"I'm as small as I get!",1.6);return;}setSize(order[i]);say(d>0?'Look how big I am!':'Fun size!',1.8);}
 async function showShortcuts(list){list=list||await api.shortcuts();bot.play('nod');
   const lines=list.map(s=>`${s.key.padEnd(20)} ${s.label}${s.ok?'':'  (taken by another app)'}`);say('Keyboard shortcuts\n'+lines.join('\n'),12,true);}
+/* ---------- "catch the butterfly / bird" (critter.js; same chase as the Android app) ---------- */
+function startChase(kind){begin();st.stayUntil=st.t+60;
+  const top=Math.max(80,H-hPx()*4.5),bottom=H-hPx()*1.2;
+  critter=new Critter(kind,W,H,top,Math.max(top+60,bottom),Math.max(34,base*1.1));
+  bot.play('jump');bot.setEmotion('surprised',1.5);say(Critter.lines.start(critter.kind),2.4);}
+function updateCritter(dt){if(!critter)return;
+  const ev=critter.step(dt,st.x,st.y-hPx()*.6,Math.max(60,base*1.6));fxDirty=true;
+  if(critter.state<=Critter.FLUTTER&&st.mode!=='drag'&&st.mode!=='fall'){st.target=null;st.mode='fly';
+    st.fly={x:clamp(critter.x,base*1.3,W-base*1.3),y:clamp(critter.y+hPx()*.6,hPx()+10,H),then:null};}
+  if(ev==='dodge'){bot.play('shrug');bot.setEmotion('surprised',1.6);say(Critter.lines.dodge(),1.8);}
+  else if(ev==='caught'){st.fly=null;st.mode=st.y>=H-2?'ground':'hover';bot.play('jump');bot.setEmotion('love',2.6);say(Critter.lines.caught(critter.kind),2.4);}
+  else if(ev==='free'){bot.play('wave');bot.setEmotion('happy',2.4);say(Critter.lines.free(),2.2);}
+  else if(ev==='done'){critter=null;st.quietUntil=st.t+3;flyTo(st.x,H,()=>idle());}}
+function drawCritter(){if(!fxDirty&&!critter)return;fxg.clearRect(0,0,fx.width,fx.height);fxDirty=!!critter;if(critter)critter.draw(fxg);}
+
 function command(text){const s=text.toLowerCase().trim();if(!s)return;
+  const cm=s.match(/\b(catch|chase|get|grab|go after)\b.*?\b(birds?|birdie|sparrow|parrot|butter ?fl(?:y|ies)|bug)\b/);
+  if(cm)return startChase(/^(birds?|birdie|sparrow|parrot)$/.test(cm[2])?'bird':'butterfly');
   if(/\b(shortcut|shortcuts|hotkey|hotkeys|keys)\b/.test(s))return showShortcuts();
   const named=SKINS.find(sk=>sk.kw.some(k=>new RegExp('\\b'+k+'\\b').test(s)));
   if(/\b(wear|outfit|skin|dress|costume|clothes|change|be a|become|turn into|switch)\b/.test(s)){begin();named?wear(named.id):wear(otherSkin());later(1.4,idle);return;}
@@ -263,6 +282,7 @@ function tick(dt){
   const cy=st.y-hPx()*.6,d=Math.hypot(mouse.x-st.x,mouse.y-cy);
   if(!paletteOpen){if(d<450&&st.state!=='SLEEP'){bot.lookTarget={x:clamp((mouse.x-st.x)/220,-1,1),y:clamp((mouse.y-cy)/220,-1,1)};st.lookAt=st.t+1.5;}
     else if(st.t>st.lookAt){st.lookAt=st.t+rand(1.5,3.5);bot.lookTarget={x:rand(-.8,.8),y:rand(-.4,.5)};}}
+  updateCritter(dt);
   // movement
   let flyPose=0,tiltT=0;
   if(st.mode==='fall'){st.vy+=2600*dt;st.x+=st.vx*dt;st.y+=st.vy*dt;st.vx*=1-dt*.5;
@@ -295,6 +315,7 @@ function tick(dt){
   bot.update(dt);
   updatePuffs(dt);
   render();
+  drawCritter();
   rect=hitRect();
   setInteractive(paletteOpen||!!pd||overBot(mouse.x,mouse.y));
   if(paletteOpen)placePalette();

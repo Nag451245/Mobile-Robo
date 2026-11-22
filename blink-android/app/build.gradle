@@ -10,8 +10,8 @@ android {
         applicationId 'com.blink.buddy'
         minSdk 26
         targetSdk 34
-        versionCode 7
-        versionName '0.7'
+        versionCode 8
+        versionName '0.8'
 
         // The Cactus runtime ships for 64-bit ARM, which nearly every current Android phone uses.
         // CI emulator tests can build for x86_64 with -PsweetyAbi=x86_64.

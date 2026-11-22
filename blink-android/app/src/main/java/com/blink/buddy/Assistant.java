@@ -386,6 +386,31 @@ final class Assistant {
             case "laugh": reply(host, pick("Hehe! You're funny!", "Teehee, stop it!", "Haha, that tickles my circuits!"), "laugh", "laugh"); break;
             case "joke": reply(host, JOKES[rnd.nextInt(JOKES.length)], "laugh", "laugh"); break;
             case "sleep": reply(host, "Nap time. Tap me to wake me up.", "sleep", "sleep"); break;
+            case "catch": {
+                // A butterfly or bird flutters in and Sweety chases it (floating Sweety, wallpaper preview).
+                String kind = "bird".equals(a.optString("critter")) ? "bird" : "butterfly";
+                boolean wasFloating = OverlayService.running;
+                // In the app the preview Sweety does the chase too; elsewhere she needs to be floating to be seen.
+                if (!wasFloating && !startFloating() && host.activity() == null) {
+                    reply(host, "Let me out first! Open the Sweety app and tap Start floating Sweety, then ask me again.", "shrug", "curious");
+                    break;
+                }
+                String line = "bird".equals(kind)
+                    ? pick("A birdie! Come here, little bird!", "Tweet tweet! I'm gonna catch you!", "Ooh, a bird! Wait for me!")
+                    : pick("Ooh, a butterfly! Let me catch it!", "Pretty butterfly! Come here!", "Butterfly! Wait for me!");
+                reply(host, line, "jump", "surprised");
+                main.postDelayed(() -> host.cue("catch:" + kind, "happy"), wasFloating ? 300 : 3500);
+                break;
+            }
+            case "hide":
+                if (OverlayService.running) reply(host, pick("Okay, I'll hide! Say Hey Sweety, come back when you miss me.", "Peekaboo, I'm hiding! Call me back anytime."), "hide", "happy");
+                else reply(host, "I'm already tucked away. Say come back and I'll pop out!", "nod", "happy");
+                break;
+            case "show":
+                if (OverlayService.running) reply(host, pick("Here I am!", "Peekaboo! I'm back!", "Did you miss me?"), "show", "happy");
+                else if (startFloating()) reply(host, "Here I come!", "wave", "happy");
+                else reply(host, "Open the Sweety app and tap Start floating Sweety to let me out!", "shrug", "curious");
+                break;
             case "outfit": {
                 String want = a.optString("outfit", "").toLowerCase(Locale.ROOT);
                 Skin pick = null;
@@ -445,6 +470,13 @@ final class Assistant {
         else if (chatBrain.status().contains("stopped after")) reply(host, "Sorry, my chat brain doesn't work on this phone. I can still do alarms, calls, music, tricks and more!", "shrug", "sad");
         else if (chatBrain.ready()) reply(host, "Hmm, that one took me too long to think about. Ask me again?", "shrug", "curious");
         else reply(host, "Hmm, my chat brain hiccuped. " + chatBrain.status() + ". Try asking again?", "shrug", "curious");
+    }
+
+    /** Starts the floating Sweety if Android allows (display over other apps is on). */
+    private boolean startFloating() {
+        if (!android.provider.Settings.canDrawOverlays(app)) return false;
+        try { app.startForegroundService(new Intent(app, OverlayService.class)); return true; }
+        catch (Exception e) { Log.w(TAG, "could not start floating Sweety", e); return false; }
     }
 
     /* ------------------------------------------------------------ helpers */

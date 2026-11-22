@@ -93,6 +93,10 @@ final class RuleBrain {
         if (s.matches(".*\\b(date|what day|which day|today's)\\b.*")) return new Call("phone_status", Call.obj("item", "date"), 1, "rules");
 
         // Sweety's own fun
+        Matcher critter = Pattern.compile("\\b(catch|chase|get|grab|go after|run after)\\b.*?\\b(birds?|birdie|sparrow|parrot|butter ?fl(?:y|ies)|bug)\\b").matcher(s);
+        if (critter.find()) return new Call("sweety_fun", Call.obj("action", "catch", "critter", critter.group(2).matches("birds?|birdie|sparrow|parrot") ? "bird" : "butterfly"), 1, "rules");
+        if (s.matches(".*\\b(come back|come out|show yourself|where are you|unhide|reappear)\\b.*")) return new Call("sweety_fun", Call.obj("action", "show"), 1, "rules");
+        if (s.matches(".*\\b(hide|hide yourself|go away|go hide|disappear|vanish|leave me alone)\\b.*")) return new Call("sweety_fun", Call.obj("action", "hide"), 1, "rules");
         for (Skin sk : Skin.ALL) {
             String key = sk.id.equals("kitty") ? "(kitty|cat)" : sk.id.equals("bunny") ? "(bunny|rabbit)" : sk.id.equals("nightcap") ? "(nightcap|pajama|pyjama|sleepy cap)" : sk.id.equals("snow") ? "(snow|winter)" : sk.id.equals("panda") ? "(panda|bear)" : sk.id;
             if (s.matches(".*\\b(wear|be a|become|change to|switch to|dress)\\b.*") && s.matches(".*\\b" + key + "\\b.*")) return new Call("sweety_fun", Call.obj("action", "outfit", "outfit", sk.id), 1, "rules");
@@ -142,7 +146,7 @@ final class RuleBrain {
             case "media_control": k = "music|song|songs|play|pause|next|previous|skip|volume|louder|quieter|softer|track|resume"; break;
             case "phone_status": k = "battery|charge|charging|time|clock|date|what day|which day"; break;
             case "take_note": k = "note|notes|write|remember|jot"; break;
-            case "sweety_fun": k = "danc\\w*|party|groove|boogie|jump|hop|spin|twirl|flip|backflip|somersault|cart ?wheel\\w*|wheeler|wheelie|laugh|giggle|joke|jokes|funny|sleep|nap|night|outfit|clothes|dress|wear|costume|wave|kitty|bunny|panda|snow|sunny|trick|tricks"; break;
+            case "sweety_fun": k = "danc\\w*|party|groove|boogie|jump|hop|spin|twirl|flip|backflip|somersault|cart ?wheel\\w*|wheeler|wheelie|laugh|giggle|joke|jokes|funny|sleep|nap|night|outfit|clothes|dress|wear|costume|wave|kitty|bunny|panda|snow|sunny|trick|tricks|catch|chase|birds?|birdie|butter ?fl(?:y|ies)|hide|go away|disappear|vanish|come back|come out|where are you|appear|reappear"; break;
             default: return true;
         }
         return Pattern.compile("\\b(" + k + ")\\b", Pattern.CASE_INSENSITIVE).matcher(text).find();

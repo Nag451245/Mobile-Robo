@@ -83,6 +83,58 @@ public class HostTest {
         System.out.println((tw != null ? "ok    " : "FAIL  ") + "midnight dance: " + tw);
     }
 
+    /** The new voice tricks: catch a butterfly or bird, hide, come back. */
+    static void tricks() {
+        String[][] cases = {
+            {"Catch the butterfly", "catch", "butterfly"}, {"Hey Sweety, catch the bird!", "catch", "bird"}, {"chase that birdie", "catch", "bird"},
+            {"can you catch a butterfly for me", "catch", "butterfly"}, {"go after the bug", "catch", "butterfly"},
+            {"hide", "hide", null}, {"go away for a bit", "hide", null}, {"disappear", "hide", null},
+            {"come back", "show", null}, {"where are you?", "show", null}, {"come out Sweety", "show", null},
+        };
+        for (String[] c : cases) {
+            Call call = new RuleBrain().parse(c[0]);
+            boolean ok = call != null && "sweety_fun".equals(call.name) && c[1].equals(call.args.optString("action"))
+                && (c[2] == null || c[2].equals(call.args.optString("critter")));
+            ok &= RuleBrain.decide(null, call, c[0]) == call;
+            if (!ok) fails++;
+            System.out.println((ok ? "ok    " : "FAIL  ") + "trick [" + c[0] + "] -> " + (call == null ? "none" : call.name + " " + call.args) + (ok ? "" : "   expected " + c[1] + " " + c[2]));
+        }
+        // Needle saying "sweety_fun" for these must be believed too.
+        for (String s : new String[]{"catch the butterfly", "hide", "come back"}) {
+            Call n = new Call("sweety_fun", null, .9f, "needle3");
+            boolean ok = RuleBrain.plausible("sweety_fun", s);
+            if (!ok) fails++;
+            System.out.println((ok ? "ok    " : "FAIL  ") + "needle trick [" + s + "] plausible");
+        }
+    }
+
+    /** A whole chase: Sweety flies after the critter like on the phone; it must dodge once, get caught, fly free and leave. */
+    static void chase(String kind) {
+        java.util.Random r = new java.util.Random(kind.hashCode());
+        float w = 1080, h = 2200, sx = 900, sy = 1800, speed = 900; // px and px/s, like the floating Sweety
+        Critter k = new Critter(kind, w, h, 400, 1400, 110, r);
+        StringBuilder events = new StringBuilder();
+        float t = 0, caughtAt = -1;
+        boolean held = true;
+        while (t < 60 && !k.done()) {
+            float dt = 1 / 30f;
+            t += dt;
+            float hx = sx, hy = sy - 300; // her hands
+            String ev = k.step(dt, hx, hy, 220);
+            if (ev != null) { events.append(ev).append(' '); if (ev.equals("caught")) caughtAt = t; }
+            if (k.state == Critter.CAUGHT) held &= Math.abs(k.x - hx) < 1 && Math.abs(k.y - hy) < 1;
+            if (k.state <= Critter.FLUTTER) { // fly towards it
+                float dx = k.x - sx, dy = k.y + 300 - sy, d = (float) Math.hypot(dx, dy), step = Math.min(d, speed * dt);
+                if (d > 0) { sx += dx / d * step; sy += dy / d * step; }
+            }
+        }
+        String got = events.toString().trim();
+        boolean ok = got.equals("dodge caught free done") && caughtAt > 2.5f && caughtAt < 30 && held && t < 60;
+        if (!ok) fails++;
+        System.out.printf(java.util.Locale.ROOT, "%schase %s: %s (caught after %.1f s, gone after %.1f s)%s%n", ok ? "ok    " : "FAIL  ", kind, got, caughtAt, t,
+            ok ? "" : "   expected: dodge caught free done, caught after 2.5-30 s (a visible chase), held in her hands");
+    }
+
     public static void main(String[] a) throws Exception {
         if (a.length > 0 && a[0].equals("tools")) { System.out.print(Call.TOOLS_JSON); return; }
         if (a.length > 1 && a[0].equals("needle")) { needle(a[1]); finish(); return; }
@@ -138,6 +190,9 @@ public class HostTest {
         wake("", null);
 
         dayTime();
+        tricks();
+        chase("butterfly");
+        chase("bird");
         String[][] sums = {{"What is 7 plus 5?", "7 plus 5 is 12!"}, {"what's seven times eight", "7 times 8 is 56!"}, {"Hey Sweety, 100 divided by 4", "100 divided by 4 is 25!"},
             {"twenty five minus thirty", "25 minus 30 is -5!"}, {"what is 10 divided by 0", "zero"}, {"What is 1.5 plus 2", "1.5 plus 2 is 3.5!"},
             {"What is the capital of France?", null}, {"Call mom and dad", null}, {"remind me in 10 minutes", null}};

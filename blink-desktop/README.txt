@@ -31,6 +31,12 @@ Click an empty spot on the desktop   Blink flies there
 Click a file icon on the desktop     Blink goes to look at it, or dives into it and pops out later
 Click Blink                          Poke (it giggles). Double-click: jump
 Drag Blink and let go                Throw it (or let go gently up high and it floats there)
+
+Tricks (Ctrl+Alt+B, then type)
+------------------------------
+catch the butterfly / catch the bird  One flutters in; Blink chases it, misses once, catches it and lets it go
+go away / hide                        Hides for an hour (Ctrl+Alt+Shift+B brings it back sooner)
+come back                             Wakes Blink up
 Right-click Blink                    Menu: actions, outfits, roaming, size, activity, start with Windows, quit
 
 Roaming

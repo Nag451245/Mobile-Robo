@@ -122,7 +122,7 @@ jobs:
           curl -fsSL --retry 3 -o ht/json.jar https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
           S=app/src/main/java/com/blink/buddy
           javac -d ht -cp ht/json.jar test/java/android/graphics/Color.java test/java/com/blink/buddy/HostTest.java \
-            $S/WakePhrase.java $S/RuleBrain.java $S/Call.java $S/Skin.java $S/DayTime.java
+            $S/WakePhrase.java $S/RuleBrain.java $S/Call.java $S/Skin.java $S/DayTime.java $S/Critter.java
           mkdir -p logs
           set -o pipefail
           java -cp ht:ht/json.jar com.blink.buddy.HostTest 2>&1 | tee logs/1-rules.log
