@@ -26,8 +26,8 @@ env:
   QWEN_URL: https://huggingface.co/litert-community/Qwen3-0.6B-int4/resolve/main/qwen3_0.6b_nothink_q4_block32_ekv1280.litertlm
   # sherpa-onnx (Apache-2.0): the wake-word detector and the Kokoro natural voice
   SHERPA_VER: v2.0.1
-  KWS_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01-mobile.tar.bz2
-  KWS_DIR: sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01-mobile
+  KWS_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01.tar.bz2
+  KWS_DIR: sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01
   KOKORO_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-en-v0_19.tar.bz2
 
 jobs:
@@ -188,6 +188,7 @@ jobs:
           python test/kws.py test kws speech/list.tsv speech/long_negative.wav 2>&1 | tee logs/6-wakeword.log
 
       - name: Natural voice model (cached)
+        if: always()
         id: kokoro
         uses: actions/cache@v4
         with:
@@ -195,6 +196,7 @@ jobs:
           key: kokoro-int8-en-v0_19
 
       - name: Natural voice speaks (every voice the app offers)
+        if: always()
         run: |
           set -o pipefail
           if [ ! -f ~/kokoro/model.int8.onnx ] && [ ! -f ~/kokoro/model.onnx ]; then
@@ -209,6 +211,7 @@ jobs:
           path: blink-android/voice-samples
 
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: test-speech
           path: |

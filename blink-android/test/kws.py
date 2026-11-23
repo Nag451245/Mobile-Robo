@@ -24,8 +24,8 @@ def prepare(model_dir, out):
     files = os.listdir(model_dir)
     for name, prefix in pick.items():
         cands = sorted(f for f in files if f.startswith(prefix) and f.endswith(".onnx"))
-        int8 = [f for f in cands if ".int8." in f]
-        src = (int8 or cands)[0]
+        int8 = [f for f in cands if ".int8." in f] if os.environ.get("KWS_INT8") == "1" else []  # full precision by default: the int8 encoder of the mobile build broke in onnxruntime
+        src = (int8 or [f for f in cands if ".int8." not in f] or cands)[0]
         shutil.copy(os.path.join(model_dir, src), os.path.join(out, name + ".onnx"))
         print(f"{name}.onnx <- {src}")
     shutil.copy(os.path.join(model_dir, "tokens.txt"), os.path.join(out, "tokens.txt"))
@@ -85,7 +85,11 @@ def test(d, listfile, long_negative=None):
         if len(parts) < 2:
             continue
         expect, path = parts[0], parts[1]
-        got = detect(kws, load_wav(path))
+        try:
+            got = detect(kws, load_wav(path))
+        except Exception as e:  # report and keep going, so one bad clip doesn't hide the rest
+            print(f"ERROR {path}: {e}")
+            got = []
         robotic = "espeak" in path
         want = expect.startswith("wake")
         good = bool(got) == want
