@@ -188,6 +188,22 @@ final class ChatBrain {
         return r == null ? null : r.getString("text");
     }
 
+    /** Deletes the downloaded chat brain (and any half download) to free space; Sweety keeps her other brains. */
+    long delete() {
+        long freed = 0;
+        main.post(() -> { if (bound) { try { app.unbindService(conn); } catch (Exception ignored) { } bound = false; } });
+        synchronized (lock) { service = null; ready = false; }
+        for (File f : new File[]{file(), new File(app.getFilesDir(), "sweety-chat.part")}) {
+            if (f.exists()) { freed += f.length(); f.delete(); }
+        }
+        // LiteRT-LM's prepared-weights cache for the model
+        File[] cached = app.getCacheDir().listFiles((d, n) -> n.startsWith("sweety-chat"));
+        if (cached != null) for (File f : cached) { freed += f.length(); f.delete(); }
+        failure = null;
+        Log.i(TAG, "chat brain removed, freed " + (freed >> 20) + " MB");
+        return freed;
+    }
+
     /* ------------------------------------------------------------ download */
     /** Downloads the model (resumable). Callbacks arrive on the main thread. */
     void download(Progress p) {

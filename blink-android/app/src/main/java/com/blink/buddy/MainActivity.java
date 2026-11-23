@@ -59,7 +59,7 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         });
     }
     private CheckBox wakeBox;
-    private Button chatBtn;
+    private Button chatBtn, removeChatBtn;
     private float dp;
     private SharedPreferences prefs;
     private BlinkView preview;
@@ -161,13 +161,21 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         col.addView(assistant, full(px(8)));
 
         // Chat brain: a small offline language model for real conversations
-        col.addView(header("Chat brain"));
-        col.addView(text("Needle 3 handles commands. For chatting and questions, Sweety needs a small chat brain (Qwen3-0.6B, about 330 MB). It downloads once, then works offline. Use Wi-Fi.", 14, false));
-        chatBtn = button("Download chat brain (330 MB)", true);
+        col.addView(header("Offline chat brain (optional)"));
+        col.addView(text("For chatting without internet, Sweety can use a small brain on the phone (Qwen3-0.6B, about 330 MB, downloaded once on Wi-Fi). "
+            + "With Gemini set up you don't need it, except as a backup when you're offline.", 14, false));
+        chatBtn = button("Download offline chat brain (330 MB)", true);
         chatBtn.setOnClickListener(v -> downloadChat());
         col.addView(chatBtn, full(px(10)));
         chatInfo = text("", 13, false);
         col.addView(chatInfo);
+        removeChatBtn = button("Remove offline chat brain (frees about 330 MB)", false);
+        removeChatBtn.setOnClickListener(v -> {
+            long freed = Assistant.get(this).chatBrain().delete();
+            toast("Removed. Freed " + (freed >> 20) + " MB.");
+            refreshChat();
+        });
+        col.addView(removeChatBtn, full(px(6)));
         refreshChat();
 
         // Smart brain: Gemini with the user's own free key
@@ -346,11 +354,13 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         ChatBrain cb = Assistant.get(this).chatBrain();
         if (cb.downloaded()) {
             chatBtn.setVisibility(View.GONE);
-            chatInfo.setText("Chat brain downloaded. Ask Sweety anything: \"tell me a story\", \"why is the sky blue?\", \"I'm bored\".");
+            chatInfo.setText("Offline chat brain downloaded.");
         } else if (!cb.downloading()) {
             chatBtn.setVisibility(View.VISIBLE);
             chatBtn.setEnabled(true);
+            chatInfo.setText("");
         }
+        if (removeChatBtn != null) removeChatBtn.setVisibility(cb.downloaded() ? View.VISIBLE : View.GONE);
         refreshBrain();
     }
 
