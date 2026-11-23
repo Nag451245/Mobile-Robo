@@ -32,7 +32,9 @@ final class GeminiBrain {
     interface Store { String get(String key, String def); void put(String key, String value); }
 
     static final String DEFAULT_BASE = "https://generativelanguage.googleapis.com";
-    static final String FALLBACK_MODEL = "gemini-2.5-flash";
+    /** Google's current free-tier Flash models (Nov 2026), tried when the key's own list can't be read or its pick fails. */
+    static final String[] KNOWN_MODELS = {"gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"};
+    static final String FALLBACK_MODEL = KNOWN_MODELS[0];
     private static final Pattern TAG = Pattern.compile("^\\s*\\[\\s*([a-z]+)\\s*[|,/ ]\\s*([a-z]+)\\s*\\]\\s*", Pattern.CASE_INSENSITIVE);
     private static final String GESTURES = "wave,nod,dance,jump,spin,flip,cartwheel,laugh,shrug,stretch,sleep";
     private static final String MOODS = "happy,love,curious,surprised,sad,sleepy,laugh,dizzy,angry";
@@ -89,12 +91,15 @@ final class GeminiBrain {
         return r;
     }
 
-    JSONObject request(String text, Calendar now, List<String> memory, boolean thinkingOff) throws Exception {
+    JSONObject request(String model, String text, Calendar now, List<String> memory, boolean fast) throws Exception {
         JSONArray contents = new JSONArray();
         for (JSONObject h : history) contents.put(h);
         contents.put(turn("user", text));
-        JSONObject gen = new JSONObject().put("temperature", 0.8).put("maxOutputTokens", 400);
-        if (thinkingOff) gen.put("thinkingConfig", new JSONObject().put("thinkingBudget", 0)); // answer fast: this is a voice chat
+        JSONObject gen = new JSONObject().put("temperature", 0.8).put("maxOutputTokens", 1024);
+        // Answer fast, it's a voice chat: Gemini 3 models take a thinking level ("low" works on all of them),
+        // older ones a thinking budget of 0. If a model refuses either, it's asked again without (see generate).
+        if (fast) gen.put("thinkingConfig", version(model) >= 3 ? new JSONObject().put("thinkingLevel", "low")
+                                                                : new JSONObject().put("thinkingBudget", 0));
         return new JSONObject()
             .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", persona(now, memory)))))
             .put("contents", contents)
@@ -139,11 +144,12 @@ final class GeminiBrain {
 
     /** One generateContent call; turns "thinking off" off for models that don't take it. */
     private String[] generate(String model, String text, List<String> memory) throws Exception {
-        boolean thinkingOff = !"no".equals(store.get("gemini_thinking_off", "yes"));
-        String[] res = post("/v1beta/models/" + model + ":generateContent", request(text, Calendar.getInstance(), memory, thinkingOff).toString());
-        if (res[0].equals("400") && thinkingOff && res[1].toLowerCase(Locale.ROOT).contains("thinking")) {
-            store.put("gemini_thinking_off", "no"); // this model doesn't take that setting
-            res = post("/v1beta/models/" + model + ":generateContent", request(text, Calendar.getInstance(), memory, false).toString());
+        String flag = "gemini_fast_" + model;
+        boolean fast = !"no".equals(store.get(flag, "yes"));
+        String[] res = post("/v1beta/models/" + model + ":generateContent", request(model, text, Calendar.getInstance(), memory, fast).toString());
+        if (res[0].equals("400") && fast && res[1].toLowerCase(Locale.ROOT).contains("think")) {
+            store.put(flag, "no"); // this model doesn't take that setting
+            res = post("/v1beta/models/" + model + ":generateContent", request(model, text, Calendar.getInstance(), memory, false).toString());
         }
         return res;
     }
@@ -161,9 +167,7 @@ final class GeminiBrain {
             String[] res = get("/v1beta/models?pageSize=200");
             if (res[0].equals("200")) out.addAll(flashModels(new JSONObject(res[1]).optJSONArray("models")));
         } catch (Exception ignored) { }
-        out.add("gemini-flash-latest");
-        out.add(FALLBACK_MODEL);
-        out.add("gemini-2.0-flash");
+        out.addAll(java.util.Arrays.asList(KNOWN_MODELS));
         return new java.util.ArrayList<>(out).subList(0, Math.min(6, out.size()));
     }
 
@@ -177,9 +181,11 @@ final class GeminiBrain {
             String name = o.optString("name", "").replaceFirst("^models/", "");
             JSONArray methods = o.optJSONArray("supportedGenerationMethods");
             if (methods == null || !methods.toString().contains("generateContent")) continue;
-            if (name.matches("gemini-[0-9.]+-flash(-[0-9]+)?")) names.add(name);
+            if (name.matches("gemini-[0-9.]+-flash(-lite)?(-[0-9]+)?")) names.add(name);
         }
         names.sort((a, b) -> Double.compare(version(b), version(a)) != 0 ? Double.compare(version(b), version(a)) : a.length() - b.length());
+        // full Flash models first, then the Lite ones
+        names.sort((a, b) -> Boolean.compare(a.contains("lite"), b.contains("lite")));
         return names;
     }
 
@@ -204,7 +210,7 @@ final class GeminiBrain {
         try { msg = new JSONObject(res[1]).getJSONObject("error").optString("message", ""); } catch (Exception ignored) { }
         switch (res[0]) {
             case "400": case "401": case "403": return msg.toLowerCase(Locale.ROOT).contains("key") ? "the Gemini key wasn't accepted" : "Gemini refused the request (" + res[0] + ": " + shorten(msg) + ")";
-            case "429": return "Gemini's free limit is used up for now";
+            case "429": return "Gemini's free limit is used up for now" + (msg.isEmpty() ? "" : " (" + shorten(msg) + ")");
             default: return "Gemini error " + res[0] + (msg.isEmpty() ? "" : ": " + shorten(msg));
         }
     }

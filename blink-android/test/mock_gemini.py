@@ -82,6 +82,10 @@ class H(BaseHTTPRequestHandler):
             self.send(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED",
                                       "message": "Quota exceeded for metric: generate_content_free_tier_requests, limit: 0"}})
             return
+        thinking = body.get("generationConfig", {}).get("thinkingConfig", {})
+        if "thinkingBudget" in thinking and "gemini-3" in self.path:  # like the real API: Gemini 3 takes a thinkingLevel
+            self.send(400, {"error": {"code": 400, "message": "thinking_budget is not supported by this model, use thinking_level"}})
+            return
         if "gemini-3.8-flash:generateContent" not in self.path:
             self.send(404, {"error": {"message": f"model {self.path} not found"}})
             return
