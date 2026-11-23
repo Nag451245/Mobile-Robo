@@ -130,9 +130,11 @@ elif setup "$APK_X86" false; then
     local from; from=$(lines)
     adb shell am start -n $PKG/.TalkActivity --es ask "'$1'" >/dev/null 2>&1
     sleep 6; adb exec-out screencap -p > "$OUT/A-$2.png"
+    # Count from this chase's start: on a slow emulator the previous chase's "done" can land after this one is asked.
+    local st; st=$(tail -n +"$from" "$LOG" | grep -n "SweetyOverlay.*chase started" | tail -1 | cut -d: -f1)
+    [ -n "$st" ] && from=$((from + st - 1))
     if wait_for "$from" "$3" "$4"; then
       local seq; seq=$(tail -n +"$from" "$LOG" | grep -oE "SweetyOverlay.*chase: [a-z]+" | sed -E 's/.*chase: //' | tr '\n' ' ')
-      seq=${seq#done } # the previous chase's "done" can land just after this one starts (slow Android 11 emulator)
       if [ -z "${5:-}" ] || echo "$seq" | grep -qE "$5"; then pass "$2: $(found "$from" "Sweety .*reply \[") ${seq:+| chase: $seq}"
       else fail "$2: wrong order: $seq"; fi
     else fail "$2: $(found "$from" "SweetyOverlay|Sweety " 6 | tr '\n' '|')"; fi
@@ -230,7 +232,13 @@ elif setup "$APK_X86" false; then
     fi
 
     # "Hey Sweety" with Sweety in the background: the wake-word detector pops up her talk card.
+    # A fresh start, so she isn't still saying an earlier answer: she doesn't listen while she talks, and the
+    # emulator's natural voice is slow (natural voice off here; her wake-up chirp still plays).
+    adb shell am force-stop $PKG
+    write_prefs true "<string name=\"gemini_key\">test-key</string><string name=\"gemini_base\">http://127.0.0.1:$MOCK</string><boolean name=\"naturalVoice\" value=\"false\" />"
     adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow
+    adb shell am start -W -n $PKG/.MainActivity >/dev/null
+    sleep 5
     adb shell input keyevent KEYCODE_HOME
     sleep 5
     if found "$G" "SweetyWake.*(listening with the wake-word detector|wake-word detector unavailable)" | grep -q "with the wake-word"; then pass "wake-word detector loaded"
@@ -299,7 +307,7 @@ elif [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
   wake_case "two steps: \"Hey Sweety\"" "$SPEECH/1-en_GB-alba-medium.wav" "SweetyWake.*(wake word|wake phrase found, rest: \"\")" 120 0
   wake_case "two steps: then \"What time is it?\"" "$SPEECH/13-en_US-ryan-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 120
   wake_case "two steps, quiet and far away: \"Hey Sweety\"" "$SPEECH/1-quiet.wav" "SweetyWake.*(wake word|wake phrase found, rest: \"\")" 120 0
-  wake_case "two steps: then \"Turn on the lights please\"" "$SPEECH/10-en_US-amy-medium.wav" "Sweety .*reply \[" 120
+  wake_case "two steps: then \"What time is it?\" (another voice)" "$SPEECH/13-en_US-amy-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 120
   for n in 9 11; do
     from=$(lines)
     feed "$SPEECH/$n-en_US-amy-medium.wav"
