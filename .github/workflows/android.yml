@@ -149,7 +149,10 @@ jobs:
         if: failure()
         working-directory: blink-android
         run: |
-          cat build.log build-x86.log 2>/dev/null | grep -E "error:|e: |FAILURE|What went wrong|undefined symbol|undefined reference|ld.lld|CMake Error" -A3 | head -n 120 | while IFS= read -r line; do echo "::error::$line"; done
+          # One annotation with the whole story (GitHub shows only 10 annotations per step)
+          { grep -h -E "error:|e: |undefined symbol|undefined reference|ld.lld|CMake Error" -A3 build.log build-x86.log 2>/dev/null | head -n 60
+            grep -h "What went wrong" -A25 build.log build-x86.log 2>/dev/null | head -n 60; } > errors.txt
+          bash test/annotate.sh error "why the build failed" errors.txt 7000
 
       - uses: actions/upload-artifact@v4
         with:
