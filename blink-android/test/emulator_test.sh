@@ -42,6 +42,8 @@ adb logcat -c
 adb logcat -v time >> "$LOG" 2>&1 &
 LOGPID=$!
 trap 'kill $LOGPID 2>/dev/null' EXIT
+# CI stops the test with `timeout` if it runs too long: say so in the summary instead of just vanishing.
+trap 'echo "FAIL  the test ran past its time limit and was stopped (last log: $(tail -n 3 "$LOG" | sed -E "s/^.{0,40}\): //" | tr "\n" "|"))" >> "$SUM"; echo; echo "=========== SUMMARY ==========="; cat "$SUM"; exit 1' TERM
 
 write_prefs() { # write_prefs <wake true|false> <extra xml>: Sweety's settings (the app must not be running)
   printf "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <boolean name=\"wake\" value=\"%s\" />\n    %s\n</map>\n" "$1" "$2" > "$OUT/blink.xml"
@@ -244,12 +246,12 @@ if setup "$APK_X86" false; then
     wake_card "\"Hi Sweety\" in a noisy room" "$SPEECH/3-noisy.wav"
     wake_card "\"Hello Sweety!\" (British voice)" "$SPEECH/8-en_GB-alba-medium.wav"
     if [ -f "$SPEECH/long_negative.wav" ]; then
-      sox "$SPEECH/long_negative.wav" "$OUT/chatter.wav" trim 0 60
+      sox "$SPEECH/long_negative.wav" "$OUT/chatter.wav" trim 0 30 # the host test covers the full length
       from=$(lines)
       feed "$OUT/chatter.wav"
-      sleep 70
-      if tail -n +"$from" "$LOG" | grep -q "SweetyWake.*wake word"; then fail "a minute of ordinary chatter woke her: $(found "$from" "SweetyWake.*wake word")"
-      else pass "a minute of ordinary chatter (sweet, sweater, hey there…) didn't wake her"; fi
+      sleep 36
+      if tail -n +"$from" "$LOG" | grep -q "SweetyWake.*wake word"; then fail "half a minute of ordinary chatter woke her: $(found "$from" "SweetyWake.*wake word")"
+      else pass "half a minute of ordinary chatter (sweet, sweater, hey there…) didn't wake her"; fi
     fi
   fi
   frozen "$A" "phase A"
@@ -257,12 +259,14 @@ else fail "could not install the x86_64 build"; fi
 
 # ================================================================ Phase B: the real phone build
 B=$(lines)
-if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
+# Phase B is slow (ARM translation), so CI runs it on one Android version only (PHASE_B=0 skips it).
+if [ "${PHASE_B:-1}" != 1 ]; then note "phase B (arm64 phone build) runs on the other emulator only"
+elif [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
   B=$MARK
   note "phase B: arm64 phone build installed (runs under ARM translation, so it's slow)"
-  wait_for "$B" "SweetyBrain.*Whistle warmed up" 900 && note "phase B: $(found "$B" "SweetyBrain.*Whistle warmed up")"
+  wait_for "$B" "SweetyBrain.*Whistle warmed up" 300 && note "phase B: $(found "$B" "SweetyBrain.*Whistle warmed up")"
   # The chat brain starts in its own process; wait until it is up (or has crashed there) before the Hey Sweety checks.
-  wait_for "$B" "SweetyChat.*(ready in|engine process stopped|chat engine failed)" 600 && note "phase B chat brain: $(found "$B" "SweetyChat.*(ready in|engine process stopped|chat engine failed)")"
+  wait_for "$B" "SweetyChat.*(ready in|engine process stopped|chat engine failed)" 300 && note "phase B chat brain: $(found "$B" "SweetyChat.*(ready in|engine process stopped|chat engine failed)")"
   sleep 5
   adb exec-out screencap -p > "$OUT/B-app.png"
   adb shell dumpsys activity services $PKG | grep -q WakeService && pass "Hey Sweety listener is running" || fail "Hey Sweety listener did not start"
@@ -284,12 +288,13 @@ if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
     else fail "$label: $(found "$from" "SweetyWake|Sweety " 8 | grep -v "mic: loudest" | tr '\n' '|')"; fi
     sleep "$rest"
   }
-  wake_case "one go, \"Hey Sweety, what time is it?\"" "$SPEECH/2-en_US-amy-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 300
-  wake_case "one go, \"Hey Sweety, dance for me\", quiet and far away" "$SPEECH/4-quiet.wav" "Sweety .*reply \[dance" 300
-  wake_case "two steps: \"Hey Sweety\"" "$SPEECH/1-en_GB-alba-medium.wav" "SweetyWake.*(wake word|wake phrase found, rest: \"\")" 300 0
-  wake_case "two steps: then \"What time is it?\"" "$SPEECH/13-en_US-ryan-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 300
-  wake_case "one go, \"Hi Sweety, set an alarm for 7 am\", noisy room" "$SPEECH/3-noisy.wav" "Sweety .*reply \[.*\]: (Alarm set for 7|I couldn't find a clock)" 300
-  wake_case "one go, \"Hey Sweety, do a backflip\" (male voice)" "$SPEECH/6-en_US-ryan-medium.wav" "Sweety .*reply \[flip" 300
+  # 120 s each: Whistle under ARM translation answers in well under a minute; a miss shouldn't cost 5 minutes.
+  wake_case "one go, \"Hey Sweety, what time is it?\"" "$SPEECH/2-en_US-amy-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 120
+  wake_case "one go, \"Hey Sweety, dance for me\", quiet and far away" "$SPEECH/4-quiet.wav" "Sweety .*reply \[dance" 120
+  wake_case "two steps: \"Hey Sweety\"" "$SPEECH/1-en_GB-alba-medium.wav" "SweetyWake.*(wake word|wake phrase found, rest: \"\")" 120 0
+  wake_case "two steps: then \"What time is it?\"" "$SPEECH/13-en_US-ryan-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 120
+  wake_case "one go, \"Hi Sweety, set an alarm for 7 am\", noisy room" "$SPEECH/3-noisy.wav" "Sweety .*reply \[.*\]: (Alarm set for 7|I couldn't find a clock)" 120
+  wake_case "one go, \"Hey Sweety, do a backflip\" (male voice)" "$SPEECH/6-en_US-ryan-medium.wav" "Sweety .*reply \[flip" 120
   for n in 9 11; do
     from=$(lines)
     feed "$SPEECH/$n-en_US-amy-medium.wav"
@@ -304,7 +309,7 @@ if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
   sleep 3
   from=$(lines)
   adb shell am start -n $PKG/.TalkActivity --es ask "'What is the capital of France?'" >/dev/null 2>&1
-  if wait_for "$from" "Sweety .*reply \[" 900; then pass "she still answers a chat question: $(found "$from" "Sweety .*reply \[")"
+  if wait_for "$from" "Sweety .*reply \[" 300; then pass "she still answers a chat question: $(found "$from" "Sweety .*reply \[")"
   else fail "no answer at all to a chat question: $(found "$from" "SweetyChat|Sweety " 4 | tr '\n' '|')"; fi
   adb exec-out screencap -p > "$OUT/B-end.png"
   adb shell dumpsys activity services $PKG | grep -q WakeService && pass "Hey Sweety listener still running at the end" || fail "Hey Sweety listener stopped"

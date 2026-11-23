@@ -282,7 +282,7 @@ jobs:
     needs: [build, host-tests]
     if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -339,7 +339,7 @@ jobs:
           disk-size: 6000M
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none
-          script: bash blink-android/test/emulator_test.sh Sweety.apk Sweety-x86_64.apk $HOME/qwen/chat.litertlm speech emu-out $PWD/voice 8089 $PWD/mocklog $PWD/vrm/sample.vrm
+          script: PHASE_B=${{ matrix.api == 34 && '1' || '0' }} timeout -k 60 1800 bash blink-android/test/emulator_test.sh Sweety.apk Sweety-x86_64.apk $HOME/qwen/chat.litertlm speech emu-out $PWD/voice 8089 $PWD/mocklog $PWD/vrm/sample.vrm
 
       - name: Post the results
         if: always()

@@ -52,10 +52,12 @@ function startVrm(url) {
   kind = "vrm";
   THREE.ColorManagement.enabled = true;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  cam = new THREE.PerspectiveCamera(26, W / H, .05, 20);
-  const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(1, 2, 2.5); scene.add(key);
-  const fill = new THREE.DirectionalLight(0xffe4f2, .9); fill.position.set(-2, 1, 1); scene.add(fill);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xb9a9d6, 1.2));
+  cam = new THREE.PerspectiveCamera(24, W / H, .05, 20);
+  // Soft portrait lighting: warm key from the front-left, pink fill, and a rim light behind for a gentle glow.
+  const key = new THREE.DirectionalLight(0xfff4ee, 2.4); key.position.set(-1.2, 2, 2.5); scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffd6ec, 1.0); fill.position.set(2, 1, 1.5); scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffe0f4, 2.0); rim.position.set(0, 2.2, -2.5); scene.add(rim);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xd9c6ee, 1.1));
   const loader = new VRMKit.GLTFLoader();
   loader.register(p => new VRMKit.VRMLoaderPlugin(p));
   loader.load(url, gltf => {
@@ -90,10 +92,12 @@ function fail(why) {
 }
 
 function frameVrm() {
-  // Head and shoulders down to the waist, a little room above her head.
-  const dist = 1.45 * Math.max(1, .75 / (W / H));
-  cam.position.set(0, headY + .02, dist);
-  cam.lookAt(0, headY - .1, 0);
+  // Always a portrait: head and shoulders, whatever the screen shape. Fit ~0.42 m tall and ~0.5 m wide.
+  const vfov = cam.fov * Math.PI / 180, hfov = 2 * Math.atan(Math.tan(vfov / 2) * (W / H));
+  const dist = Math.max(.3 / Math.tan(vfov / 2), .3 / Math.tan(hfov / 2));
+  const cy = headY - .1;                  // the face sits in the upper third, with room above her hair
+  cam.position.set(0, cy + .05, dist);    // a touch above eye level: friendlier, less "mugshot"
+  cam.lookAt(0, cy, 0);
 }
 
 function ready(info) { if (window.AndroidAvatar && AndroidAvatar.ready) AndroidAvatar.ready(JSON.stringify(info)); }
