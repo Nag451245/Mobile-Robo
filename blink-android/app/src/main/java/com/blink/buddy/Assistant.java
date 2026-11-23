@@ -247,10 +247,22 @@ final class Assistant {
         // Clear commands run on the phone straight away; everything else goes to Gemini when it's set up.
         if (gemini.configured() && (clear == null || "ask".equals(clear.name))) {
             netWorker.execute(() -> {
-                GeminiBrain.Answer ans = gemini.ask(text, memory());
+                // Like a real assistant, she starts speaking as soon as Gemini's first sentence arrives.
+                final Talk talk = new Talk(host);
+                final long asked = System.currentTimeMillis();
+                GeminiBrain.Answer ans = gemini.ask(text, memory(), (gesture, emotion, sentence) -> main.post(() -> {
+                    if (!talk.started) Log.i(TAG, "first words after " + (System.currentTimeMillis() - asked) + " ms");
+                    talk.add(gesture, emotion, sentence);
+                }));
+                main.post(talk::end);
                 if (ans != null) {
                     Log.i(TAG, "\"" + text + "\" => gemini: " + (ans.calls.isEmpty() ? "" : ans.calls.get(0).name + " " + ans.calls.get(0).args + " ") + "[" + ans.gesture + "/" + ans.emotion + "] " + ans.text);
-                    main.post(() -> answer(ans, text, host));
+                    main.post(() -> {
+                        if (talk.started && ans.calls.isEmpty()) { // already said: just keep what she remembers
+                            for (String fact : ans.remember) addMemory(fact);
+                            Log.i(TAG, "reply [" + ans.gesture + "/" + ans.emotion + "]: " + ans.text);
+                        } else answer(ans, text, host);
+                    });
                 } else {
                     Log.w(TAG, "gemini unavailable (" + gemini.lastError + "), using the offline brain");
                     worker.execute(() -> offline(text, host));
@@ -259,6 +271,47 @@ final class Assistant {
             return;
         }
         worker.execute(() -> offline(text, host));
+    }
+
+    /** Says a streamed answer sentence by sentence: the card shows it growing, her voice never waits for the rest. */
+    private final class Talk {
+        private final Host host;
+        private final StringBuilder shown = new StringBuilder();
+        private KokoroVoice.Stream stream;
+        boolean started;
+
+        Talk(Host host) { this.host = host; }
+
+        void add(String gesture, String emotion, String sentence) {
+            if (!started) {
+                started = true;
+                if (DayTime.now() == DayTime.LATE && "happy".equals(emotion)) emotion = "sleepy";
+                host.cue(gesture, emotion);
+            }
+            shown.append(shown.length() > 0 ? " " : "").append(sentence);
+            host.say(shown.toString());
+            if (!voiceOn()) return;
+            String said = sayable(sentence);
+            if (said.isEmpty()) return;
+            boolean late = DayTime.now() == DayTime.LATE;
+            if (voice.enabled() && voice.downloaded()) {
+                if (stream == null) { if (ttsReady) tts.stop(); stream = voice.open(late ? .88f : 1f); }
+                stream.add(said);
+            } else if (ttsReady) {
+                float[] pv = voiceValues();
+                tts.setPitch(pv[0] * (late ? .94f : 1f));
+                tts.setSpeechRate(pv[1] * (late ? .88f : 1f));
+                Bus.speechFor(Math.max(800, said.length() * 65L));
+                tts.speak(said, shown.length() == sentence.length() ? TextToSpeech.QUEUE_FLUSH : TextToSpeech.QUEUE_ADD, null, "sweety");
+            }
+        }
+
+        void end() { if (stream != null) stream.close(); }
+    }
+
+    /** What her voice should actually say: no "hehe"s or symbols. */
+    private static String sayable(String text) {
+        return text.replaceAll("(?i)\\b(he ?he+|ha ?ha+|hi ?hi+|tee ?hee+)\\b[!.]?", "").replaceAll("[^\\p{L}\\p{N}\\p{P}\\s]", "").trim();
     }
 
     /** Gemini's answer: its phone actions (each with its own confirmation), otherwise its words. */

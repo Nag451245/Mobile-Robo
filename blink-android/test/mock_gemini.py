@@ -61,6 +61,22 @@ class H(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
+    def send_stream(self, obj):
+        """Like streamGenerateContent?alt=sse: the answer's text in a few pieces, then any function calls."""
+        parts = obj["candidates"][0]["content"]["parts"]
+        text = "".join(p.get("text", "") for p in parts)
+        chunks = [text[i:i + 17] for i in range(0, len(text), 17)] or [""]
+        events = [{"candidates": [{"content": {"role": "model", "parts": [{"text": c}]}}]} for c in chunks]
+        calls = [p for p in parts if "functionCall" in p]
+        if calls:
+            events.append({"candidates": [{"content": {"role": "model", "parts": calls}}]})
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        for e in events:
+            self.wfile.write(("data: " + json.dumps(e) + "\r\n\r\n").encode())
+            self.wfile.flush()
+
     def check_key(self):
         if self.headers.get("x-goog-api-key") != "test-key":
             self.send(400, {"error": {"code": 400, "message": "API key not valid. Please pass a valid API key."}})
@@ -78,7 +94,7 @@ class H(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
         with open(f"{LOG}/requests.jsonl", "a") as f:
             f.write(json.dumps({"path": self.path, "body": body}) + "\n")
-        if "gemini-4.0-flash:generateContent" in self.path:
+        if "gemini-4.0-flash:" in self.path:
             self.send(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED",
                                       "message": "Quota exceeded for metric: generate_content_free_tier_requests, limit: 0"}})
             return
@@ -86,10 +102,13 @@ class H(BaseHTTPRequestHandler):
         if "thinkingBudget" in thinking and "gemini-3" in self.path:  # like the real API: Gemini 3 takes a thinkingLevel
             self.send(400, {"error": {"code": 400, "message": "thinking_budget is not supported by this model, use thinking_level"}})
             return
-        if "gemini-3.8-flash:generateContent" not in self.path:
+        if "gemini-3.8-flash:" not in self.path:
             self.send(404, {"error": {"message": f"model {self.path} not found"}})
             return
-        self.send(200, answer(body))
+        if ":streamGenerateContent" in self.path:
+            self.send_stream(answer(body))
+        else:
+            self.send(200, answer(body))
 
 
 HTTPServer(("127.0.0.1", PORT), H).serve_forever()

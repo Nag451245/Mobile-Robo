@@ -197,6 +197,13 @@ public class HostTest {
         check(a != null && "gemini-3.8-flash".equals(kv.get("gemini_model")), "the newest model isn't on the free tier, so she switches to one that works: "
             + kv.get("gemini_model") + (a == null ? " (" + g.lastError + ")" : ""));
         check(g.check() == null && "gemini-3.8-flash".equals(kv.get("gemini_model")), "the Save key check says Gemini works");
+        // Streamed like a real assistant: sentences arrive one by one (she starts speaking at the first)
+        java.util.List<String> said = new java.util.ArrayList<>();
+        String[] ge = new String[2];
+        GeminiBrain.Answer streamed = g.ask("Why is the sky blue?", memory, (gs, em, t) -> { said.add(t); ge[0] = gs; ge[1] = em; });
+        check(streamed != null && said.size() >= 2 && said.get(0).startsWith("Sunlight") && "nod".equals(ge[0]) && "happy".equals(ge[1])
+            && String.join(" ", said).equals(streamed.text), "streams the answer sentence by sentence: " + said + (streamed == null ? " (" + g.lastError + ")" : ""));
+        g.forget();
         check(a != null && a.text.startsWith("Sunlight") && a.gesture.equals("nod") && a.emotion.equals("happy") && a.calls.isEmpty(),
             "answers a question with words, gesture and mood: " + (a == null ? g.lastError : "[" + a.gesture + "/" + a.emotion + "] " + a.text));
 

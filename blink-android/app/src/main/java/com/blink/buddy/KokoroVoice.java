@@ -149,6 +149,23 @@ final class KokoroVoice {
      * no gaps beyond a short natural pause between sentences.
      */
     void speak(String text, float speed) {
+        Stream st = open(speed);
+        st.add(text);
+        st.close();
+    }
+
+    private static final String NO_MORE = new String("");
+
+    /** Text to say that arrives bit by bit (a streamed answer): add() sentences as they come, then close(). */
+    final class Stream {
+        private final java.util.concurrent.BlockingQueue<String> texts = new java.util.concurrent.LinkedBlockingQueue<>();
+        void add(String text) { if (text != null && !text.trim().isEmpty()) texts.offer(text); }
+        void close() { texts.offer(NO_MORE); }
+    }
+
+    /** Starts speaking whatever is added to the returned stream, in order, without gaps (stops anything before). */
+    Stream open(float speed) {
+        Stream st = new Stream();
         final int gen = ++generation;
         playing = true;
         speaker.execute(() -> {
@@ -159,8 +176,16 @@ final class KokoroVoice {
                 if (tts == null) warm();
                 OfflineTts t = tts;
                 if (t == null) return;
-                // Numbers, times and symbols become words: the voice skips anything not in its dictionary.
-                for (String s : sentences(SpeakText.prepare(text))) {
+                boolean firstText = true;
+                while (gen == generation) {
+                  String next = st.texts.poll(20, java.util.concurrent.TimeUnit.SECONDS);
+                  if (next == null || next == NO_MORE) break;
+                  // Numbers, times and symbols become words: the voice skips anything not in its dictionary.
+                  // Only the very first piece is split at a comma, so she starts talking as soon as possible.
+                  List<String> parts = sentences(SpeakText.prepare(next));
+                  if (!firstText && parts.size() > 1 && parts.get(0).length() <= 60) parts = java.util.Collections.singletonList(SpeakText.prepare(next));
+                  firstText = false;
+                  for (String s : parts) {
                     if (gen != generation) break;
                     long t0 = System.currentTimeMillis();
                     GeneratedAudio a = t.generate(s, speakerId(), speed);
@@ -174,6 +199,7 @@ final class KokoroVoice {
                         player.start();
                     }
                     ready.put(pcm);
+                  }
                 }
             } catch (Throwable e) {
                 Log.w(TAG, "could not speak", e);
@@ -183,6 +209,7 @@ final class KokoroVoice {
                 if (gen == generation) playing = false;
             }
         });
+        return st;
     }
 
     /** Plays chunks as they come, through one audio stream, with a short pause between them. */

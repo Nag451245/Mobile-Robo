@@ -113,7 +113,24 @@ final class GeminiBrain {
 
     /* ------------------------------------------------------------ talking to Gemini */
     /** Sweety's answer to what the user said, or null if Gemini couldn't be reached (lastError says why). */
-    Answer ask(String text, List<String> memory) {
+    /** Receives a streamed answer a sentence at a time: her gesture and mood (from the tag) and the sentence. */
+    interface Sentences { void sentence(String gesture, String emotion, String text); }
+
+    Answer ask(String text, List<String> memory) { return ask(text, memory, null); }
+
+    /**
+     * Sweety's answer. With a listener, Gemini streams it and each finished sentence is handed over at once, so she
+     * can start speaking while the rest is still being written (as real assistants do); the full answer is returned
+     * at the end either way (null if Gemini couldn't be reached; lastError says why).
+     */
+    Answer ask(String text, List<String> memory, Sentences out) {
+        this.out = out;
+        try { return askNow(text, memory); } finally { this.out = null; }
+    }
+
+    private volatile Sentences out;
+
+    private Answer askNow(String text, List<String> memory) {
         if (!configured()) { lastError = "no Gemini key"; return null; }
         if (System.currentTimeMillis() - lastTurn > 30 * 60_000L) history.clear(); // a new chat after a long pause
         try {
@@ -146,12 +163,116 @@ final class GeminiBrain {
     private String[] generate(String model, String text, List<String> memory) throws Exception {
         String flag = "gemini_fast_" + model;
         boolean fast = !"no".equals(store.get(flag, "yes"));
-        String[] res = post("/v1beta/models/" + model + ":generateContent", request(model, text, Calendar.getInstance(), memory, fast).toString());
+        String[] res = call(model, request(model, text, Calendar.getInstance(), memory, fast).toString());
         if (res[0].equals("400") && fast && res[1].toLowerCase(Locale.ROOT).contains("think")) {
             store.put(flag, "no"); // this model doesn't take that setting
-            res = post("/v1beta/models/" + model + ":generateContent", request(model, text, Calendar.getInstance(), memory, false).toString());
+            res = call(model, request(model, text, Calendar.getInstance(), memory, false).toString());
         }
         return res;
+    }
+
+    /** generateContent, or streamGenerateContent when someone is listening sentence by sentence. */
+    private String[] call(String model, String body) throws Exception {
+        Sentences o = out;
+        if (o == null) return post("/v1beta/models/" + model + ":generateContent", body);
+        return stream("/v1beta/models/" + model + ":streamGenerateContent?alt=sse", body, o);
+    }
+
+    /**
+     * A streamed answer: reads the server-sent events as they come, passes each finished sentence on, and returns
+     * the whole answer in generateContent's shape (so parse() and the model fallbacks work as before).
+     */
+    private String[] stream(String path, String body, Sentences o) throws Exception {
+        HttpURLConnection c = (HttpURLConnection) new URL(base + path).openConnection();
+        try {
+            c.setRequestMethod("POST");
+            c.setConnectTimeout(10000);
+            c.setReadTimeout(30000);
+            c.setRequestProperty("x-goog-api-key", key());
+            c.setDoOutput(true);
+            c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+            try (OutputStream w = c.getOutputStream()) { w.write(body.getBytes(StandardCharsets.UTF_8)); }
+            int code = c.getResponseCode();
+            if (code >= 400) {
+                InputStream in = c.getErrorStream();
+                ByteArrayOutputStream bo = new ByteArrayOutputStream();
+                if (in != null) { byte[] b = new byte[8192]; int n; while ((n = in.read(b)) > 0) bo.write(b, 0, n); in.close(); }
+                return new String[]{String.valueOf(code), bo.toString("UTF-8")};
+            }
+            StringBuilder text = new StringBuilder();
+            JSONArray calls = new JSONArray();
+            SentenceSplitter split = new SentenceSplitter(o);
+            try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (!line.startsWith("data:")) continue;
+                    JSONObject chunk = new JSONObject(line.substring(5).trim());
+                    JSONArray cands = chunk.optJSONArray("candidates");
+                    JSONObject content = cands == null || cands.length() == 0 ? null : cands.getJSONObject(0).optJSONObject("content");
+                    JSONArray parts = content == null ? null : content.optJSONArray("parts");
+                    if (parts == null) continue;
+                    for (int i = 0; i < parts.length(); i++) {
+                        JSONObject p = parts.getJSONObject(i);
+                        if (p.optBoolean("thought", false)) continue;
+                        if (p.has("functionCall")) calls.put(p);
+                        else if (p.has("text")) { text.append(p.getString("text")); split.add(p.getString("text")); }
+                    }
+                }
+            }
+            split.finish();
+            JSONArray parts = new JSONArray().put(new JSONObject().put("text", text.toString()));
+            for (int i = 0; i < calls.length(); i++) parts.put(calls.get(i));
+            JSONObject whole = new JSONObject().put("candidates", new JSONArray().put(new JSONObject()
+                .put("content", new JSONObject().put("role", "model").put("parts", parts))));
+            return new String[]{"200", whole.toString()};
+        } finally { c.disconnect(); }
+    }
+
+    /** The end of a sentence: . ! ? or … (maybe a closing quote or bracket), then a space. */
+    private static final Pattern SENTENCE_END = Pattern.compile("[.!?…]+[\"')\\]]*\\s+");
+
+    /** Turns streamed text into finished sentences: her [gesture|mood] tag first, then sentence by sentence. */
+    static final class SentenceSplitter {
+        private final Sentences out;
+        private final StringBuilder buf = new StringBuilder();
+        private String gesture = "nod", emotion = "happy";
+        private boolean tagDone;
+
+        SentenceSplitter(Sentences out) { this.out = out; }
+
+        void add(String piece) {
+            buf.append(piece);
+            if (!tagDone) {
+                String t = buf.toString().trim();
+                if (t.startsWith("[") && t.indexOf(']') < 0 && t.length() < 40) return; // the tag isn't complete yet
+                Matcher m = TAG.matcher(t);
+                if (m.find()) {
+                    String g = m.group(1).toLowerCase(Locale.ROOT), e = m.group(2).toLowerCase(Locale.ROOT);
+                    if (("," + GESTURES + ",").contains("," + g + ",")) gesture = g;
+                    if (("," + MOODS + ",").contains("," + e + ",")) emotion = e;
+                    t = t.substring(m.end());
+                }
+                buf.setLength(0);
+                buf.append(t);
+                tagDone = true;
+            }
+            Matcher end = SENTENCE_END.matcher(buf);
+            int cut = 0;
+            while (end.find()) cut = end.end();
+            if (cut > 0) { emit(buf.substring(0, cut)); buf.delete(0, cut); }
+        }
+
+        void finish() { if (buf.length() > 0) emit(buf.toString()); buf.setLength(0); }
+
+        private void emit(String raw) {
+            String t = clean(raw);
+            if (!t.isEmpty()) out.sentence(gesture, emotion, t);
+        }
+    }
+
+    /** Spoken text without markdown or emoji. */
+    static String clean(String text) {
+        return text.replaceAll("[*#_`]", "").replaceAll("[\\x{1F000}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{FE0F}\\x{200D}]", "").replaceAll("\\s+", " ").trim();
     }
 
     private static boolean keyRejected(String[] res) {
