@@ -8,7 +8,7 @@
 #           her natural Kokoro voice, and "Hey Sweety" (wake-word detector) pops up her talk card over other apps.
 # Usage: emulator_test.sh arm64.apk x86_64.apk chat.litertlm speech_dir out_dir [kokoro_dir mock_port mock_log_dir]
 set -u
-APK_ARM=$1; APK_X86=$2; MODEL=$3; SPEECH=$4; OUT=$5; VOICE=${6:-}; MOCK=${7:-}; MOCKLOG=${8:-}
+APK_ARM=$1; APK_X86=$2; MODEL=$3; SPEECH=$4; OUT=$5; VOICE=${6:-}; MOCK=${7:-}; MOCKLOG=${8:-}; VRMFILE=${9:-}
 PKG=com.blink.buddy
 mkdir -p "$OUT"
 SUM="$OUT/summary.txt"; : > "$SUM"
@@ -195,6 +195,34 @@ if setup "$APK_X86" false; then
     if [ -n "$VOICE" ]; then
       if wait_for "$G" "SweetyVoice.*spoke" 120; then pass "speaks in her natural voice: $(found "$G" "SweetyVoice.*(ready in|spoke)" 2 | tr '\n' ' ')"
       else fail "the natural voice didn't speak: $(found "$G" "SweetyVoice" 3 | tr '\n' '|')"; fi
+    fi
+
+    # Her 3D self in the talk card: the robot loads and her mouth follows her natural voice.
+    if found "$G" "SweetyAvatar.*ready robot" | grep -q .; then pass "3D robot Sweety appears in her talk card: $(found "$G" "SweetyAvatar.*ready robot")"
+    else fail "the 3D avatar didn't load in the talk card: $(found "$G" "SweetyAvatar|chromium" 3 | tr '\n' '|')"; fi
+    if [ -n "$VOICE" ]; then
+      if found "$G" "SweetyAvatar.*spoke [0-9.]+ s, mouth peak 0\.[3-9]|SweetyAvatar.*spoke [0-9.]+ s, mouth peak 1" | grep -q .; then pass "her mouth moves with her voice: $(found "$G" "SweetyAvatar.*spoke")"
+      else fail "lip-sync: $(found "$G" "SweetyAvatar.*spoke|SweetyVoice.*spoke" 3 | tr '\n' '|')"; fi
+    fi
+    adb exec-out screencap -p > "$OUT/A-avatar-robot.png"
+
+    # A VRM character instead of the robot (the user's own design; here a sample avatar).
+    if [ -n "$VRMFILE" ] && [ -f "$VRMFILE" ]; then
+      adb shell am force-stop $PKG
+      adb push "$VRMFILE" /data/local/tmp/avatar.vrm >/dev/null && adb shell chmod 644 /data/local/tmp/avatar.vrm
+      adb shell run-as $PKG cp /data/local/tmp/avatar.vrm files/avatar.vrm
+      write_prefs true "<string name=\"gemini_key\">test-key</string><string name=\"gemini_base\">http://127.0.0.1:$MOCK</string><string name=\"avatar\">vrm</string>"
+      V=$(lines)
+      adb shell am start -W -n $PKG/.MainActivity >/dev/null
+      sleep 4
+      gem "Why is the sky blue?" "Sunlight" "answers with her VRM character"
+      if wait_for "$V" "SweetyAvatar.*ready vrm" 90; then pass "VRM character loads in her talk card: $(found "$V" "SweetyAvatar.*ready vrm")"
+      else fail "VRM character didn't load: $(found "$V" "SweetyAvatar" 4 | tr '\n' '|')"; fi
+      sleep 3; adb exec-out screencap -p > "$OUT/A-avatar-vrm.png"
+      if [ -n "$VOICE" ]; then
+        if wait_for "$V" "SweetyAvatar.*spoke" 60; then pass "the VRM character lip-syncs: $(found "$V" "SweetyAvatar.*spoke")"
+        else fail "VRM lip-sync: $(found "$V" "SweetyAvatar" 4 | tr '\n' '|')"; fi
+      fi
     fi
 
     # "Hey Sweety" with Sweety in the background: the wake-word detector pops up her talk card.

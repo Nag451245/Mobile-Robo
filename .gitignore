@@ -22,3 +22,4 @@ blink-desktop/data/
 # sherpa-onnx library and wake-word model are downloaded by the Android build
 blink-android/app/libs/
 blink-android/app/src/main/assets/kws/
+blink-android/app/src/main/assets/avatar/vendor.bundle.js

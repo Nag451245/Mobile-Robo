@@ -52,6 +52,8 @@ final class LocalEars {
                 double sum = 0;
                 for (int i = 0; i < r && n < pcm.length; i++) { float f = buf[i] / 32768f; pcm[n++] = f; sum += f * f; }
                 double rms = Math.sqrt(sum / r);
+                final float lvl = (float) Math.min(1, rms * 12);
+                main.post(() -> cb.onLevel(lvl));
                 if (rms > .018) { spoke = true; silentMs = 0; }
                 else if (spoke) silentMs += r * 1000 / RATE;
                 if (spoke && silentMs > 1100) break;             // you stopped talking

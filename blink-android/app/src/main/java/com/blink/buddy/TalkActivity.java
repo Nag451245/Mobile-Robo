@@ -23,8 +23,13 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
-/** Small talk card over the current app, opened by long-pressing the floating Sweety. Listens straight away. */
-public class TalkActivity extends Activity implements Assistant.Host, Ears.Callback {
+/**
+ * Sweety's assistant card: slides up over whatever app is open (from "Hey Sweety", the assistant button, or
+ * long-pressing the floating Sweety) with her 3D self on top. She listens (glowing with your voice), thinks,
+ * and answers with lip-sync, gestures and moods.
+ */
+public class TalkActivity extends Activity implements Assistant.Host, Ears.Callback, Bus.SpeechListener {
+    private AvatarView avatar;
     private static final int REQ_MIC = 11, REQ_CONTACT = 12;
     /** A sentence the "Hey Sweety" listener heard but needs a screen for (picking a contact). */
     static final String EXTRA_ASK = "ask";
@@ -49,10 +54,17 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
         root.setOnClickListener(v -> finish());
         LinearLayout card = new LinearLayout(this);
         card.setOrientation(LinearLayout.VERTICAL);
-        card.setPadding(px(20), px(18), px(20), px(22));
+        card.setPadding(px(20), px(6), px(20), px(22));
         card.setClickable(true);
-        GradientDrawable bg = new GradientDrawable(); bg.setColor(Color.WHITE); bg.setCornerRadii(new float[]{px(26), px(26), px(26), px(26), 0, 0, 0, 0});
+        GradientDrawable bg = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, new int[]{0xFFFBE7F3, 0xFFFFFFFF});
+        bg.setCornerRadii(new float[]{px(28), px(28), px(28), px(28), 0, 0, 0, 0});
         card.setBackground(bg);
+
+        // Her 3D self: robot Sweety or the VRM character you made
+        avatar = new AvatarView(this);
+        int avatarH = Math.round(getResources().getDisplayMetrics().heightPixels * .36f);
+        card.addView(avatar.web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, avatarH));
+        Bus.addSpeech(this);
 
         TextView title = new TextView(this); title.setText("Sweety"); title.setTextSize(22); title.setTypeface(Typeface.DEFAULT_BOLD); title.setTextColor(0xFF211832);
         status = new TextView(this); status.setTextSize(16); status.setTextColor(0xFF6A5F80); status.setPadding(0, px(4), 0, px(4));
@@ -128,18 +140,39 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     }
 
     /* Ears.Callback */
-    @Override public void onListening(boolean on) { mic.setText(on ? "Stop" : "Talk"); if (on) { status.setText("Listening…"); Bus.sweety(null, null, "curious"); } }
+    @Override public void onListening(boolean on) {
+        mic.setText(on ? "Stop" : "Talk");
+        if (on) { status.setText("Listening…"); Bus.sweety(null, null, "curious"); avatar.state("listening"); }
+    }
     @Override public void onPartial(String text) { heard.setText(text + "…"); }
     @Override public void onHeard(String text) { ask(text); }
-    @Override public void onProblem(String message) { status.setText(message); }
+    @Override public void onProblem(String message) { status.setText(message); avatar.state("idle"); avatar.mood("curious", 2.5f); }
+    @Override public void onLevel(float level) { avatar.level(level); }
+
+    /* Bus.SpeechListener: her voice drives her mouth */
+    @Override public void onSpeech(float[] loud, float[] bright, int fps) { avatar.speak(loud, bright, fps); }
+    @Override public void onSpeechFor(long ms) { avatar.speakFor(ms); }
+    @Override public void onSpeechStop() { avatar.stop(); }
 
     /* Assistant.Host */
     @Override public void say(String text) {
         status.setText(text);
         Bus.sweety(text, null, null);
-        h.postDelayed(this::finish, Math.max(3500, text.length() * 75L));
+        h.postDelayed(this::closeWhenQuiet, Math.max(3500, text.length() * 75L));
     }
-    @Override public void cue(String action, String emotion) { Bus.sweety(null, action, emotion); }
+
+    /** Closes the card once she has finished talking (long answers in her natural voice take a while). */
+    private void closeWhenQuiet() {
+        if (Assistant.get(this).talking() || ears.listening()) h.postDelayed(this::closeWhenQuiet, 500);
+        else h.postDelayed(this::finish, 1200);
+    }
+    @Override public void cue(String action, String emotion) {
+        Bus.sweety(null, action, emotion);
+        if ("nod".equals(action) && "curious".equals(emotion)) { avatar.state("thinking"); return; } // "let me think"
+        avatar.state("idle");
+        avatar.gesture(action);
+        avatar.mood(emotion, 3.5f);
+    }
     @Override public Activity activity() { return this; }
 
     @Override
@@ -168,6 +201,8 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
 
     @Override
     protected void onDestroy() {
+        Bus.removeSpeech(this);
+        if (avatar != null) avatar.destroy();
         if (ears != null) ears.destroy();
         h.removeCallbacksAndMessages(null);
         super.onDestroy();

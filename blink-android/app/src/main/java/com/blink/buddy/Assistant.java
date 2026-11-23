@@ -71,7 +71,14 @@ final class Assistant {
         this.chatBrain = new ChatBrain(app);
         tts = new TextToSpeech(app, status -> {
             ttsReady = status == TextToSpeech.SUCCESS;
-            if (ttsReady) { pickCuteVoice(); applyVoiceStyle(); }
+            if (ttsReady) {
+                pickCuteVoice(); applyVoiceStyle();
+                tts.setOnUtteranceProgressListener(new android.speech.tts.UtteranceProgressListener() {
+                    @Override public void onStart(String id) { }
+                    @Override public void onDone(String id) { Bus.speechStop(); }
+                    @Override public void onError(String id) { Bus.speechStop(); }
+                });
+            }
         });
         worker.execute(() -> needle.ensure(app));
         // Debug builds may point Sweety at a test Gemini server (only adb run-as can set this preference).
@@ -212,6 +219,7 @@ final class Assistant {
         float[] pv = voiceValues();
         tts.setPitch(pv[0] * (late ? .94f : 1f));
         tts.setSpeechRate(pv[1] * (late ? .88f : 1f));
+        Bus.speechFor(Math.max(800, said.length() * 65L)); // lip-sync without sound data for the phone's voice
         tts.speak(said, TextToSpeech.QUEUE_FLUSH, null, "sweety");
     }
 

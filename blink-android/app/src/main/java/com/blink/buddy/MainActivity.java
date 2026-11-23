@@ -209,6 +209,30 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         });
         col.addView(forgetKey, full(px(6)));
 
+        // Her look: robot Sweety, or a VRM character the user designed
+        col.addView(header("Sweety's look (avatar)"));
+        col.addView(text("When she pops up to help, Sweety appears as her 3D self and talks with lip-sync. "
+            + "She can be the robot, or a VRM character you design yourself (for example in the free VRoid Studio: export as VRM, then import it here).", 14, false));
+        String[][] looks = {{"robot", "Robot Sweety"}, {"vrm", "My VRM character"}};
+        col.addView(chipRow(looks, id -> {
+            if ("vrm".equals(id) && !AvatarView.vrmFile(this).exists()) { toast("Import your VRM character first."); return; }
+            prefs.edit().putString("avatar", id).apply();
+            refreshAvatar();
+            toast("vrm".equals(id) ? "Sweety will appear as your character." : "Sweety will appear as the robot.");
+        }));
+        Button importVrm = button("Import VRM character (.vrm)", false);
+        importVrm.setOnClickListener(v -> {
+            Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*");
+            try { startActivityForResult(pick, REQ_VRM); } catch (ActivityNotFoundException e) { toast("No file picker found on this phone."); }
+        });
+        col.addView(importVrm, full(px(8)));
+        Button tryLook = button("Try it: call Sweety", false);
+        tryLook.setOnClickListener(v -> startActivity(new Intent(this, TalkActivity.class).putExtra(TalkActivity.EXTRA_ASK, "Hi Sweety!")));
+        col.addView(tryLook, full(px(6)));
+        avatarInfo = text("", 13, false);
+        col.addView(avatarInfo);
+        refreshAvatar();
+
         // Natural voice: Kokoro on the phone
         col.addView(header("Natural voice"));
         col.addView(text("A warm, natural voice that runs on the phone (Kokoro, about 100 MB, downloaded once on Wi-Fi). Until then Sweety uses the phone's own voice.", 14, false));
@@ -365,7 +389,45 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
     }
 
     private Button voiceBtn;
-    private TextView voiceInfo;
+    private TextView voiceInfo, avatarInfo;
+    private static final int REQ_VRM = 41;
+
+    private void refreshAvatar() {
+        if (avatarInfo == null) return;
+        java.io.File f = AvatarView.vrmFile(this);
+        String using = AvatarView.usingVrm(this) ? "your VRM character" : "robot Sweety";
+        avatarInfo.setText("Using: " + using + (f.exists() ? ". Imported character: " + (f.length() >> 20) + " MB." : "."));
+    }
+
+    /** Copies the picked .vrm into the app (checked to be a glTF/VRM file, at most 80 MB). */
+    private void importVrm(Uri uri) {
+        avatarInfo.setText("Importing…");
+        new Thread(() -> {
+            String msg;
+            java.io.File tmp = new java.io.File(getFilesDir(), "avatar.vrm.part");
+            try (java.io.InputStream in = getContentResolver().openInputStream(uri); java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) {
+                if (in == null) throw new Exception("couldn't open the file");
+                byte[] buf = new byte[256 * 1024];
+                long total = 0; int n; boolean first = true;
+                while ((n = in.read(buf)) > 0) {
+                    if (first) { first = false; if (n < 4 || buf[0] != 'g' || buf[1] != 'l' || buf[2] != 'T' || buf[3] != 'F') throw new Exception("that isn't a VRM file"); }
+                    total += n;
+                    if (total > 80L * 1024 * 1024) throw new Exception("it's bigger than 80 MB; export it with smaller textures");
+                    out.write(buf, 0, n);
+                }
+                java.io.File dest = AvatarView.vrmFile(this);
+                if (dest.exists()) dest.delete();
+                if (!tmp.renameTo(dest)) throw new Exception("couldn't save it");
+                prefs.edit().putString("avatar", "vrm").apply();
+                msg = "Imported! Sweety will appear as your character. Tap \"Try it\" to see her.";
+            } catch (Exception e) {
+                tmp.delete();
+                msg = "Couldn't import: " + e.getMessage();
+            }
+            final String m = msg;
+            ui.post(() -> { toast(m); refreshAvatar(); });
+        }, "sweety-import-vrm").start();
+    }
 
     private void refreshVoice() {
         if (voiceBtn == null) return;
@@ -471,6 +533,7 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
         if (req == 31) { toast(res == RESULT_OK ? "Done! Hold the power or home button to call Sweety." : "No problem. You can do this later."); return; }
+        if (req == REQ_VRM) { if (res == RESULT_OK && data != null && data.getData() != null) importVrm(data.getData()); return; }
         if (req != REQ_CONTACT || contactCb == null) return;
         Assistant.NumberCallback cb = contactCb; contactCb = null;
         cb.onNumber(res == RESULT_OK && data != null ? TalkActivity.numberFrom(this, data.getData()) : null);

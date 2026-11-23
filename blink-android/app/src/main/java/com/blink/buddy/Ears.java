@@ -15,6 +15,8 @@ final class Ears implements RecognitionListener {
     interface Callback {
         void onListening(boolean listening);
         void onPartial(String text);
+        /** Your voice level while listening, 0..1 (the avatar glows with it). */
+        default void onLevel(float level) { }
         void onHeard(String text);
         void onProblem(String message);
     }
@@ -59,7 +61,7 @@ final class Ears implements RecognitionListener {
 
     @Override public void onReadyForSpeech(Bundle params) { }
     @Override public void onBeginningOfSpeech() { }
-    @Override public void onRmsChanged(float rmsdB) { }
+    @Override public void onRmsChanged(float rmsdB) { cb.onLevel(Math.max(0f, Math.min(1f, (rmsdB + 2f) / 12f))); }
     @Override public void onBufferReceived(byte[] buffer) { }
     @Override public void onEndOfSpeech() { }
     @Override public void onEvent(int eventType, Bundle params) { }

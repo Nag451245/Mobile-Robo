@@ -1,0 +1,13 @@
+{
+  "name": "sweety-avatar",
+  "private": true,
+  "description": "Sweety's 3D avatar page: modern three.js + three-vrm (MIT), bundled for the Android WebView",
+  "scripts": {
+    "build": "esbuild src/vendor.js --bundle --format=iife --minify --target=es2019 --outfile=../app/src/main/assets/avatar/vendor.bundle.js"
+  },
+  "devDependencies": {
+    "@pixiv/three-vrm": "3.5.4",
+    "esbuild": "0.24.2",
+    "three": "0.180.0"
+  }
+}

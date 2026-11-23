@@ -150,6 +150,9 @@ final class KokoroVoice {
         synchronized (this) { track = at; }
         try {
             at.play();
+            // Lip-sync: the avatar gets this sentence's loudness and brightness as it starts playing.
+            float[][] env = Bus.envelope(pcm, rate, 30);
+            Bus.speech(env[0], env[1], 30);
             int off = 0;
             while (off < pcm.length && gen == generation) {
                 int n = Math.min(4096, pcm.length - off);
@@ -166,6 +169,7 @@ final class KokoroVoice {
     }
 
     void stop() {
+        Bus.speechStop();
         generation++;
         playing = false;
         synchronized (this) { if (track != null) try { track.pause(); track.flush(); } catch (Exception ignored) { } }

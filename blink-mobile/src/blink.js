@@ -26,7 +26,7 @@ function rrect(ctx,x,y,w,h,r){r=Math.min(r,w/2,h/2);ctx.beginPath();ctx.moveTo(x
 function lidClip(ctx,cx,cy,r,side,yi,yo){const xi=cx-side*r,xo=cx+side*r,s=(yo-yi)/(xo-xi),xl=cx-2.2*r,xr=cx+2.2*r;ctx.beginPath();ctx.moveTo(xl,yi+s*(xl-xi));ctx.lineTo(xr,yi+s*(xr-xi));ctx.lineTo(xr,cy+3*r);ctx.lineTo(xl,cy+3*r);ctx.closePath();ctx.clip();}
 function heart(ctx,cx,cy,s){ctx.beginPath();ctx.moveTo(cx,cy+.7*s);ctx.bezierCurveTo(cx-1.15*s,cy,cx-.6*s,cy-.95*s,cx,cy-.35*s);ctx.bezierCurveTo(cx+.6*s,cy-.95*s,cx+1.15*s,cy,cx,cy+.7*s);ctx.fill();}
 
-function drawFace(ctx,W,H,emo,open,lx,ly,t,sk){
+function drawFace(ctx,W,H,emo,open,lx,ly,t,sk,talk){
   sk=sk||SKINS[0];
   const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,sk.bg[0]);g.addColorStop(1,sk.bg[1]);ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
   ctx.fillStyle='rgba(255,255,255,0.035)';for(let y=0;y<H;y+=Math.max(3,H/42))ctx.fillRect(0,y,W,Math.max(1,H/128));
@@ -59,7 +59,9 @@ function drawFace(ctx,W,H,emo,open,lx,ly,t,sk){
   const mx=W*.5+ox*.6,my=H*.76+oy*.4,m=H*.055;
   ctx.lineWidth=H*.028;ctx.shadowBlur=H*.04;ctx.beginPath();
   const catW=()=>{ctx.beginPath();ctx.arc(mx-m*.48,my-m*.25,m*.48,0,Math.PI);ctx.arc(mx+m*.48,my-m*.25,m*.48,0,Math.PI);ctx.stroke();};
-  switch(emo){
+  // Talking: the mouth opens with her voice (talk 0..1), whatever her mood.
+  if(talk>.04&&emo!=='sleep'){const o=Math.min(1,talk);ctx.beginPath();ctx.ellipse(mx,my-m*.1,m*(.55+.25*o),m*(.12+.6*o),0,0,7);ctx.fill();ctx.shadowBlur=0;ctx.fillStyle='#FF8FB1';ctx.beginPath();ctx.ellipse(mx,my+m*.22*o,m*.32*o,m*.14*o,0,0,7);ctx.fill();}
+  else switch(emo){
     case 'happy':case 'laugh':case 'wink':{const k=emo==='laugh'?1.25+Math.abs(Math.sin(t*14))*.25:1.05;ctx.beginPath();ctx.moveTo(mx-m*k,my-m*.4);ctx.arc(mx,my-m*.4,m*k,0,Math.PI);ctx.closePath();ctx.fill();ctx.shadowBlur=0;ctx.fillStyle='#FF8FB1';ctx.beginPath();ctx.ellipse(mx,my+m*.32*k,m*.5*k,m*.24*k,0,0,7);ctx.fill();break;}
     case 'sad':ctx.arc(mx,my+m*.85,m*.85,Math.PI*1.2,Math.PI*1.8);ctx.stroke();break;
     case 'surprised':ctx.ellipse(mx,my,m*.5,m*.65,0,0,7);ctx.stroke();break;
@@ -111,7 +113,7 @@ class Bot{
     Object.assign(this,{group:g,root,body,headPivot,head,heartM});
     this.accParts=[];this.accAnims=[];this.parts=[];
     this.t=Math.random()*10;this.action=null;this.aT=0;this.aDur=0;this.emo='neutral';this.baseEmo='neutral';this.emoUntil=Infinity;
-    this.blinkNext=this.t+2;this.blinkT=-1;this.look={x:0,y:0};this.lookTarget={x:0,y:0};this.walk=0;this.fly=0;this.sleeping=false;this.onActionEnd=null;this.pendingSkin=null;
+    this.blinkNext=this.t+2;this.blinkT=-1;this.look={x:0,y:0};this.lookTarget={x:0,y:0};this.walk=0;this.fly=0;this.talk=0;this.listen=0;this.sleeping=false;this.onActionEnd=null;this.pendingSkin=null;
     this.cur={rootY:0,rootRotY:0,rootRotX:0,rootRotZ:0,sx:1,sy:1,bodyY:.72,headX:0,headY:0,headZ:0,armL:-.2,armR:.2,armLx:0,armRx:0};
     this.applySkin(typeof opts.skin==='string'?(SKIN_BY[opts.skin]||SKINS[0]):(opts.skin||SKINS[0]));
   }
@@ -196,10 +198,11 @@ class Bot{
     if(this.blinkT<0&&t>this.blinkNext)this.blinkT=0;
     if(this.blinkT>=0){this.blinkT+=dt;const b=this.blinkT/.16;open=Math.abs(1-2*Math.min(1,b));if(b>=1){this.blinkT=-1;this.blinkNext=t+rand(2,6);open=1;}}
     const kl=Math.min(1,dt*7);this.look.x+=(this.lookTarget.x-this.look.x)*kl;this.look.y+=(this.lookTarget.y-this.look.y)*kl;
-    drawFace(this.fx,this.fw,this.fh,this.emo,open,this.look.x,this.look.y,t,this.skin);this.tex.needsUpdate=true;
+    drawFace(this.fx,this.fw,this.fh,this.emo,open,this.look.x,this.look.y,t,this.skin,this.talk);this.tex.needsUpdate=true;
     const pulse=this.emo==='sleep'||this.emo==='sleepy'?.1:Math.pow(Math.max(0,Math.sin(t*3)),6);
     this.heartM.scale.setScalar(.12*(1+.18*pulse));
-    this.M.glow.emissiveIntensity=.3+.35*pulse;
+    this.M.glow.emissiveIntensity=.3+.35*pulse+1.2*(this.listen||0); // listening: her antenna glows with your voice
+    this.heartM.scale.multiplyScalar(1+.25*(this.listen||0));
   }
 }
 
