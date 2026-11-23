@@ -145,7 +145,9 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
 
         // Hey Sweety: hands-free while the screen is on
         col.addView(header("Hey Sweety (hands-free)"));
-        col.addView(text("Say \"Hey Sweety\" anywhere on your phone, then your request, like \"Hey Sweety, set an alarm for 7 am\". She listens only while the screen is on and unlocked, everything stays on the phone, and a notification shows while it's on. Uses a little more battery.", 14, false));
+        col.addView(text("Say \"Hey Sweety\" anywhere on your phone. She chirps, her talk card pops up, and you say what you need, like \"set an alarm for 7 am\". "
+            + "She listens for her name only while the screen is on and unlocked (the detector runs on the phone), and a notification shows while it's on. "
+            + "Also allow \"display over other apps\" (Start floating Sweety asks for it) so her card can pop up over any app.", 14, false));
         wakeBox = new CheckBox(this); wakeBox.setText("Listen for \"Hey Sweety\""); wakeBox.setTextColor(0xFF2A1D40); wakeBox.setTextSize(16);
         wakeBox.setChecked(WakeService.enabled(this));
         wakeBox.setOnCheckedChangeListener((b, on) -> setWake(on));
@@ -153,6 +155,10 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         wakeInfo = text("", 13, false);
         wakeInfo.setTextColor(0xFF2E7D5B);
         col.addView(wakeInfo);
+        col.addView(text("Like Gemini: make Sweety your phone's assistant, then hold the power or home button (or swipe up from a bottom corner) to call her from anywhere, even the lock screen.", 14, false));
+        Button assistant = button("Make Sweety my assistant", false);
+        assistant.setOnClickListener(v -> makeAssistant());
+        col.addView(assistant, full(px(8)));
 
         // Chat brain: a small offline language model for real conversations
         col.addView(header("Chat brain"));
@@ -163,6 +169,56 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         chatInfo = text("", 13, false);
         col.addView(chatInfo);
         refreshChat();
+
+        // Smart brain: Gemini with the user's own free key
+        col.addView(header("Smart brain (Gemini)"));
+        col.addView(text("For a truly smart assistant, Sweety can think with Google's Gemini: real answers, follow-up questions, and she remembers what you tell her. "
+            + "Get a free API key from Google AI Studio and paste it here. What you ask is sent to Google when Gemini answers; without internet she uses her offline brain.", 14, false));
+        EditText keyBox = new EditText(this);
+        keyBox.setHint(Assistant.get(this).gemini().configured() ? "Key saved ✓ (paste a new one to change it)" : "Paste your Gemini API key");
+        keyBox.setSingleLine(true);
+        keyBox.setInputType(android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        col.addView(keyBox, full(px(6)));
+        Button saveKey = button("Save key", true);
+        saveKey.setOnClickListener(v -> {
+            String k = keyBox.getText().toString().trim();
+            if (k.length() < 20) { toast("That doesn't look like a Gemini key."); return; }
+            prefs.edit().putString("gemini_key", k).putString("gemini_model", "").apply();
+            keyBox.setText(""); keyBox.setHint("Key saved ✓ (paste a new one to change it)");
+            toast("Saved! Ask Sweety anything.");
+            ask("Hi Sweety, are you there?");
+        });
+        col.addView(saveKey, full(px(8)));
+        Button getKey = button("Get a free key (Google AI Studio)", false);
+        getKey.setOnClickListener(v -> { try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/apikey"))); } catch (ActivityNotFoundException e) { toast("Open aistudio.google.com/apikey in your browser."); } });
+        col.addView(getKey, full(px(6)));
+        Button forgetKey = button("Remove key and forget what she remembers", false);
+        forgetKey.setOnClickListener(v -> {
+            prefs.edit().remove("gemini_key").remove("gemini_model").remove("memory").apply();
+            Assistant.get(this).gemini().forget();
+            keyBox.setHint("Paste your Gemini API key");
+            toast("Key removed. Sweety uses her offline brain.");
+        });
+        col.addView(forgetKey, full(px(6)));
+
+        // Natural voice: Kokoro on the phone
+        col.addView(header("Natural voice"));
+        col.addView(text("A warm, natural voice that runs on the phone (Kokoro, about 100 MB, downloaded once on Wi-Fi). Until then Sweety uses the phone's own voice.", 14, false));
+        voiceBtn = button("Download natural voice (100 MB)", true);
+        voiceBtn.setOnClickListener(v -> downloadVoice());
+        col.addView(voiceBtn, full(px(8)));
+        voiceInfo = text("", 13, false);
+        col.addView(voiceInfo);
+        col.addView(text("Pick her natural voice (tap to hear):", 13, false));
+        col.addView(chipRow(KokoroVoice.SPEAKERS, id -> {
+            Assistant a = Assistant.get(this);
+            a.voice().setSpeaker(id);
+            if (!a.voice().downloaded()) { toast("Download the natural voice first."); return; }
+            String line = "Hi! I'm Sweety. Do you like my voice?";
+            say(line); cue("wave", "happy");
+            a.speak(line);
+        }));
+        refreshVoice();
 
         col.addView(header("Floating Sweety (like the desktop version)"));
         col.addView(text("Sweety walks, flies and perches on top of your home screen and apps. Drag her anywhere, flick to throw, tap to poke, double-tap for a new outfit, long-press to talk. She hides in landscape (videos and games).", 14, false));
@@ -244,6 +300,7 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
             syncing = true; wakeBox.setChecked(WakeService.enabled(this)); syncing = false;
         }
         refreshChat();
+        refreshVoice();
     }
 
     @Override
@@ -295,6 +352,54 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
             chatBtn.setEnabled(true);
         }
         refreshBrain();
+    }
+
+    private Button voiceBtn;
+    private TextView voiceInfo;
+
+    private void refreshVoice() {
+        if (voiceBtn == null) return;
+        KokoroVoice v = Assistant.get(this).voice();
+        if (v.downloaded()) { voiceBtn.setVisibility(View.GONE); voiceInfo.setText("Natural voice downloaded. Pick one below."); }
+        else if (!v.downloading()) { voiceBtn.setVisibility(View.VISIBLE); voiceBtn.setEnabled(true); }
+    }
+
+    private void downloadVoice() {
+        voiceBtn.setEnabled(false);
+        voiceInfo.setText("Starting download…");
+        Assistant.get(this).voice().download(new ChatBrain.Progress() {
+            @Override public void onProgress(long done, long total) {
+                if (done < 0) { voiceInfo.setText("Unpacking…"); return; }
+                long mb = done >> 20, all = total >> 20;
+                voiceInfo.setText(total > 0 ? "Downloading… " + mb + " of " + all + " MB (" + (done * 100 / total) + "%)" : "Downloading… " + mb + " MB");
+            }
+            @Override public void onDone(boolean ok, String message) {
+                voiceInfo.setText(message);
+                voiceBtn.setEnabled(true);
+                if (ok) {
+                    refreshVoice(); refreshBrain();
+                    String line = "Ta-da! This is my real voice. Nice to meet you properly!";
+                    say(line); cue("jump", "love");
+                    Assistant.get(MainActivity.this).speak(line);
+                } else voiceBtn.setText("Resume download");
+            }
+        });
+    }
+
+    /** Asks Android to make Sweety the default digital assistant (hold power/home to call her). */
+    private void makeAssistant() {
+        if (Build.VERSION.SDK_INT >= 29) {
+            android.app.role.RoleManager rm = getSystemService(android.app.role.RoleManager.class);
+            if (rm != null && rm.isRoleAvailable(android.app.role.RoleManager.ROLE_ASSISTANT)) {
+                if (rm.isRoleHeld(android.app.role.RoleManager.ROLE_ASSISTANT)) { toast("Sweety is already your assistant. Hold the power or home button to call her!"); return; }
+                try { startActivityForResult(rm.createRequestRoleIntent(android.app.role.RoleManager.ROLE_ASSISTANT), 31); return; } catch (Exception ignored) { }
+            }
+        }
+        // Many phones only allow choosing the assistant in Settings.
+        toast("Choose Sweety under \"Digital assistant app\".");
+        for (String action : new String[]{Settings.ACTION_VOICE_INPUT_SETTINGS, "android.settings.MANAGE_DEFAULT_APPS_SETTINGS", Settings.ACTION_SETTINGS}) {
+            try { startActivity(new Intent(action)); return; } catch (Exception ignored) { }
+        }
     }
 
     private void downloadChat() {
@@ -355,6 +460,7 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == 31) { toast(res == RESULT_OK ? "Done! Hold the power or home button to call Sweety." : "No problem. You can do this later."); return; }
         if (req != REQ_CONTACT || contactCb == null) return;
         Assistant.NumberCallback cb = contactCb; contactCb = null;
         cb.onNumber(res == RESULT_OK && data != null ? TalkActivity.numberFrom(this, data.getData()) : null);

@@ -5,7 +5,9 @@ import android.os.Handler;
 import android.os.Looper;
 
 /**
- * Picks how Sweety hears: offline Whistle when it is loaded, otherwise the phone's own speech service.
+ * Picks how Sweety hears. First choice: the phone's own speech recogniser (Google's on most phones), which copes
+ * with accents and noisy rooms far better than a tiny offline model. If it isn't there, or its service fails
+ * (no internet and no offline pack, busy, …), offline Whistle takes over.
  * While it listens, the "Hey Sweety" listener steps aside so the two don't fight over the microphone.
  */
 final class Hearing {
@@ -18,13 +20,17 @@ final class Hearing {
         this.ctx = ctx;
         phone = new Ears(ctx, cb);
         local = new LocalEars(ctx, cb);
+        phone.fallback = () -> {
+            if (Assistant.get(ctx).localHearing()) local.listen();
+            else cb.onProblem("Speech recognition isn't working right now. You can type to me instead.");
+        };
     }
 
     void listen() {
         boolean wakeWasOn = WakeService.hold(20000);
         Runnable go = () -> {
-            if (Assistant.get(ctx).localHearing() || !phone.available()) local.listen();
-            else phone.listen();
+            if (phone.available()) phone.listen();
+            else local.listen();
         };
         if (wakeWasOn) h.postDelayed(go, 250); else go.run(); // give the wake listener a moment to close the mic
     }

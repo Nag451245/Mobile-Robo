@@ -74,9 +74,45 @@ final class Assistant {
             if (ttsReady) { pickCuteVoice(); applyVoiceStyle(); }
         });
         worker.execute(() -> needle.ensure(app));
+        // Debug builds may point Sweety at a test Gemini server (only adb run-as can set this preference).
+        boolean debug = (app.getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+        gemini = new GeminiBrain(new GeminiBrain.Store() {
+            @Override public String get(String k, String d) { return prefs.getString(k, d); }
+            @Override public void put(String k, String v) { prefs.edit().putString(k, v).apply(); }
+        }, debug ? prefs.getString("gemini_base", "") : "");
+        voice = new KokoroVoice(app);
+        netWorker.execute(voice::warm);
     }
 
-    String brainStatus() { return needle.status + "\n" + chatBrain.status(); }
+    private final GeminiBrain gemini;
+    private final KokoroVoice voice;
+    private final ExecutorService netWorker = Executors.newSingleThreadExecutor();
+
+    GeminiBrain gemini() { return gemini; }
+    KokoroVoice voice() { return voice; }
+
+    String brainStatus() {
+        String g = !gemini.configured() ? "Gemini: not set up (add your free key below for a much smarter Sweety)"
+            : gemini.lastError != null ? "Gemini: " + gemini.lastError + " (using the offline brain meanwhile)"
+            : "Gemini: ready" + (prefs.getString("gemini_model", "").isEmpty() ? "" : " (" + prefs.getString("gemini_model", "") + ")");
+        return g + "\n" + needle.status + "\n" + chatBrain.status() + "\n" + voice.status();
+    }
+
+    /** Facts Sweety remembers about the user (said to Gemini), newest last. */
+    java.util.List<String> memory() {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        try { JSONArray a = new JSONArray(prefs.getString("memory", "[]")); for (int i = 0; i < a.length(); i++) out.add(a.getString(i)); } catch (Exception ignored) { }
+        return out;
+    }
+
+    private void addMemory(String fact) {
+        try {
+            JSONArray a = new JSONArray(prefs.getString("memory", "[]"));
+            a.put(fact.trim());
+            while (a.length() > 30) a.remove(0);
+            prefs.edit().putString("memory", a.toString()).apply();
+        } catch (Exception ignored) { }
+    }
 
     ChatBrain chatBrain() { return chatBrain; }
 
@@ -84,7 +120,7 @@ final class Assistant {
     void warmChat() { if (chatBrain.downloaded() && !chatBrain.ready()) chatWorker.execute(chatBrain::warm); }
 
     /** True while Sweety is speaking, so the wake-word listener doesn't hear herself. */
-    boolean talking() { return Sounds.playing() || (ttsReady && tts.isSpeaking()); }
+    boolean talking() { return Sounds.playing() || voice.playing() || (ttsReady && tts.isSpeaking()); }
 
     /** True when Whistle is loaded, so Sweety can hear fully offline. */
     boolean localHearing() { return needle.speechReady(); }
@@ -111,10 +147,10 @@ final class Assistant {
     /* ------------------------------------------------------------ voice */
     /** Voice styles: id, label, pitch, speed. */
     static final String[][] VOICES = {
-        {"sweet", "Sweet", "1.6", "1.08"},
-        {"squeaky", "Squeaky", "1.95", "1.15"},
-        {"soft", "Soft", "1.35", "0.98"},
-        {"bubbly", "Bubbly", "1.75", "1.22"},
+        // Natural ranges: a high pitch on the phone's voice sounds squeaky and robotic.
+        {"sweet", "Sweet", "1.1", "1.0"},
+        {"soft", "Soft", "1.0", "0.94"},
+        {"bubbly", "Bubbly", "1.15", "1.06"},
     };
 
     String voiceStyle() { return prefs.getString("voiceStyle", "sweet"); }
@@ -160,12 +196,19 @@ final class Assistant {
     }
 
     void speak(String text) {
-        if (!voiceOn() || !ttsReady || text == null) return;
+        if (!voiceOn() || text == null) return;
         // "hehe", "haha" read aloud sound odd, so the giggle sound plays instead.
         String said = text.replaceAll("(?i)\\b(he ?he+|ha ?ha+|hi ?hi+|tee ?hee+)\\b[!.]?", "").replaceAll("[^\\p{L}\\p{N}\\p{P}\\s]", "").trim();
         if (said.isEmpty()) return;
         // After midnight she talks a little slower and lower: sleepy Sweety.
         boolean late = DayTime.now() == DayTime.LATE;
+        // Her natural voice once it's downloaded; the phone's voice until then.
+        if (voice.enabled() && voice.downloaded()) {
+            if (ttsReady) tts.stop();
+            voice.speak(said, late ? .88f : 1f);
+            return;
+        }
+        if (!ttsReady) return;
         float[] pv = voiceValues();
         tts.setPitch(pv[0] * (late ? .94f : 1f));
         tts.setSpeechRate(pv[1] * (late ? .88f : 1f));
@@ -174,7 +217,7 @@ final class Assistant {
 
     private static boolean giggly(String text) { return text != null && text.matches("(?is).*\\b(he ?he+|ha ?ha+|hi ?hi+|tee ?hee+)\\b.*"); }
 
-    void stopTalking() { if (tts != null) tts.stop(); }
+    void stopTalking() { voice.stop(); if (tts != null) tts.stop(); }
 
     /** Understand and act on one sentence. Callbacks to the host happen on the main thread. */
     void handle(String text, Host host) {
@@ -186,7 +229,36 @@ final class Assistant {
         String sum = RuleBrain.math(text);
         if (sum != null) { Log.i(TAG, "\"" + text + "\" => math"); main.post(() -> reply(host, sum, "nod", "happy")); return; }
         host.cue("nod", "curious");
-        worker.execute(() -> {
+        Call clear = rules.parse(text);
+        // Clear commands run on the phone straight away; everything else goes to Gemini when it's set up.
+        if (gemini.configured() && (clear == null || "ask".equals(clear.name))) {
+            netWorker.execute(() -> {
+                GeminiBrain.Answer ans = gemini.ask(text, memory());
+                if (ans != null) {
+                    Log.i(TAG, "\"" + text + "\" => gemini: " + (ans.calls.isEmpty() ? "" : ans.calls.get(0).name + " " + ans.calls.get(0).args + " ") + "[" + ans.gesture + "/" + ans.emotion + "] " + ans.text);
+                    main.post(() -> answer(ans, text, host));
+                } else {
+                    Log.w(TAG, "gemini unavailable (" + gemini.lastError + "), using the offline brain");
+                    worker.execute(() -> offline(text, host));
+                }
+            });
+            return;
+        }
+        worker.execute(() -> offline(text, host));
+    }
+
+    /** Gemini's answer: its phone actions (each with its own confirmation), otherwise its words. */
+    private void answer(GeminiBrain.Answer ans, String text, Host host) {
+        for (String fact : ans.remember) addMemory(fact);
+        if (!ans.calls.isEmpty()) { for (Call c : ans.calls) run(c, text, host); return; }
+        if (!ans.text.isEmpty()) { reply(host, ans.text, ans.gesture, ans.emotion); return; }
+        if (!ans.remember.isEmpty()) { reply(host, pick("Got it, I'll remember that!", "Noted! I won't forget."), "nod", "love"); return; }
+        reply(host, "Hmm, I'm not sure what to say to that!", "shrug", "curious");
+    }
+
+    /** The offline brain: rules and Needle 3 for commands, the on-device chat brain for everything else. */
+    private void offline(String text, Host host) {
+        {
             Call call = null;
             Call ruled = rules.parse(text);
             needle.ensure(app);
@@ -198,7 +270,7 @@ final class Assistant {
             Log.i(TAG, "\"" + text + "\" -> needle " + (call == null ? "none" : call.name + " " + call.confidence)
                 + ", rules " + (ruled == null ? "none" : ruled.name) + " => " + (fc == null ? "chat" : fc.name));
             main.post(() -> run(fc, text, host));
-        });
+        }
     }
 
     private String pick(String... options) { return options[rnd.nextInt(options.length)]; }

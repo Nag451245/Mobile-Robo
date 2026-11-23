@@ -10,8 +10,8 @@ android {
         applicationId 'com.blink.buddy'
         minSdk 26
         targetSdk 34
-        versionCode 8
-        versionName '0.8'
+        versionCode 9
+        versionName '0.9'
 
         // The Cactus runtime ships for 64-bit ARM, which nearly every current Android phone uses.
         // CI emulator tests can build for x86_64 with -PsweetyAbi=x86_64.
@@ -70,4 +70,7 @@ android {
 dependencies {
     // Google's on-device LLM runtime; runs Sweety's chat brain (Qwen3-0.6B, downloaded in the app).
     implementation 'com.google.ai.edge.litertlm:litertlm-android:0.19.1'
+    // sherpa-onnx (Apache-2.0): the "Hey Sweety" wake-word detector and her natural Kokoro voice.
+    // CI downloads the release AAR into app/libs (see .github/workflows/android.yml).
+    implementation files('libs/sherpa-onnx.aar')
 }

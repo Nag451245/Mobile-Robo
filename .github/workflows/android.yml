@@ -1,8 +1,10 @@
 name: Android live wallpaper (APK)
 
 # Every build is tested before it is published:
-#   host-tests  wake phrase + command routing rules, and the real Whistle / Needle 3 models on recorded speech
-#   emulator    the real APK on Android 11 and 14 emulators: chat brain answers, "Hey Sweety" works in the background
+#   host-tests  routing rules, Whistle / Needle 3 on recorded speech, the "Hey Sweety" wake-word detector on realistic
+#               phone-mic audio and ordinary chatter, the natural voice, and the Gemini brain against a stand-in server
+#   emulator    the real APK on Android 11 and 14 emulators: answers, actions and memory, natural voice, wake word ->
+#               talk card, "Hey Sweety" in the background
 #   publish     only from main, only when everything above passed
 on:
   push:
@@ -22,6 +24,11 @@ env:
   CACTUS: https://huggingface.co/Cactus-Compute/cactus/resolve/main/releases/4.1.4
   HF: https://huggingface.co/Cactus-Compute
   QWEN_URL: https://huggingface.co/litert-community/Qwen3-0.6B-int4/resolve/main/qwen3_0.6b_nothink_q4_block32_ekv1280.litertlm
+  # sherpa-onnx (Apache-2.0): the wake-word detector and the Kokoro natural voice
+  SHERPA_VER: v2.0.1
+  KWS_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/kws-models/sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01-mobile.tar.bz2
+  KWS_DIR: sherpa-onnx-kws-zipformer-gigaspeech-3.3M-2024-01-01-mobile
+  KOKORO_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-en-v0_19.tar.bz2
 
 jobs:
   build:
@@ -37,6 +44,36 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Fetch sherpa-onnx and the "Hey Sweety" wake-word model
+        working-directory: blink-android/app
+        run: |
+          mkdir -p libs src/main/assets/kws
+          curl -fsSL --retry 3 -o libs/sherpa-onnx.aar "https://github.com/k2-fsa/sherpa-onnx/releases/download/$SHERPA_VER/sherpa-onnx-static-link-onnxruntime-${SHERPA_VER#v}.aar"
+          curl -fsSL --retry 3 "$KWS_URL" | tar -xj -C "$RUNNER_TEMP"
+          pip install -q sentencepiece==0.2.0 numpy
+          python ../test/kws.py prepare "$RUNNER_TEMP/$KWS_DIR" src/main/assets/kws
+          ls -la libs src/main/assets/kws
+
+      - name: Natural voice model (cached)
+        id: kokoro
+        uses: actions/cache@v4
+        with:
+          path: ~/kokoro
+          key: kokoro-int8-en-v0_19
+
+      - name: Package the natural voice for download (Kokoro, Apache-2.0)
+        run: |
+          if [ ! -f ~/kokoro/model.int8.onnx ] && [ ! -f ~/kokoro/model.onnx ]; then
+            mkdir -p ~/kokoro && curl -fsSL --retry 3 "$KOKORO_URL" | tar -xj -C ~/kokoro --strip-components=1
+          fi
+          ls -la ~/kokoro
+          (cd ~/kokoro && zip -qr "$GITHUB_WORKSPACE/sweety-voice-kokoro.zip" .)
+          ls -la sweety-voice-kokoro.zip
 
       # Sweety's offline brain, all by Cactus Compute (Apache-2.0):
       # Cactus 4 runtime + Needle 3 (understands requests, calls tools) + Whistle (speech to text).
@@ -93,6 +130,12 @@ jobs:
             Sweety.apk
             Sweety-x86_64.apk
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sweety-voice
+          path: sweety-voice-kokoro.zip
+          compression-level: 0
+
   host-tests:
     runs-on: ubuntu-latest
     defaults:
@@ -114,7 +157,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq sox espeak-ng >/dev/null
-          pip install -q piper-tts==1.2.0
+          pip install -q piper-tts==1.2.0 sherpa-onnx==${SHERPA_VER#v} sentencepiece==0.2.0 numpy
 
       - name: Wake phrase and routing rules
         run: |
@@ -122,13 +165,48 @@ jobs:
           curl -fsSL --retry 3 -o ht/json.jar https://repo1.maven.org/maven2/org/json/json/20240303/json-20240303.jar
           S=app/src/main/java/com/blink/buddy
           javac -d ht -cp ht/json.jar test/java/android/graphics/Color.java test/java/com/blink/buddy/HostTest.java \
-            $S/WakePhrase.java $S/RuleBrain.java $S/Call.java $S/Skin.java $S/DayTime.java $S/Critter.java
+            $S/WakePhrase.java $S/RuleBrain.java $S/Call.java $S/Skin.java $S/DayTime.java $S/Critter.java $S/GeminiBrain.java
           mkdir -p logs
           set -o pipefail
           java -cp ht:ht/json.jar com.blink.buddy.HostTest 2>&1 | tee logs/1-rules.log
 
-      - name: Record the test phrases (several voices, quiet and noisy)
+      - name: Gemini brain against a stand-in server (answers, actions, memory, wrong key)
+        run: |
+          set -o pipefail
+          python test/mock_gemini.py 8089 mocklog &
+          sleep 2
+          java -cp ht:ht/json.jar com.blink.buddy.HostTest gemini http://127.0.0.1:8089 2>&1 | tee logs/5-gemini.log
+
+      - name: Record the test phrases (several voices, quiet, noisy, phone mic, and ordinary chatter)
         run: bash test/make_speech.sh test/wake_phrases.tsv speech
+
+      - name: Wake-word detector on the recordings (90 percent must wake, ordinary speech never)
+        run: |
+          set -o pipefail
+          curl -fsSL --retry 3 "$KWS_URL" | tar -xj -C "$RUNNER_TEMP"
+          python test/kws.py prepare "$RUNNER_TEMP/$KWS_DIR" kws > /dev/null
+          python test/kws.py test kws speech/list.tsv speech/long_negative.wav 2>&1 | tee logs/6-wakeword.log
+
+      - name: Natural voice model (cached)
+        id: kokoro
+        uses: actions/cache@v4
+        with:
+          path: ~/kokoro
+          key: kokoro-int8-en-v0_19
+
+      - name: Natural voice speaks (every voice the app offers)
+        run: |
+          set -o pipefail
+          if [ ! -f ~/kokoro/model.int8.onnx ] && [ ! -f ~/kokoro/model.onnx ]; then
+            mkdir -p ~/kokoro && curl -fsSL --retry 3 "$KOKORO_URL" | tar -xj -C ~/kokoro --strip-components=1
+          fi
+          python test/voice.py ~/kokoro voice-samples 2>&1 | tee logs/7-voice.log
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: voice-samples
+          path: blink-android/voice-samples
 
       - uses: actions/upload-artifact@v4
         with:
@@ -206,6 +284,16 @@ jobs:
           name: test-speech
           path: speech
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: sweety-voice
+
+      - name: Unpack the natural voice and start the stand-in Gemini server
+        run: |
+          mkdir -p voice && unzip -q sweety-voice-kokoro.zip -d voice && ls voice
+          nohup python3 blink-android/test/mock_gemini.py 8089 "$PWD/mocklog" > mock.out 2>&1 &
+          sleep 1
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -234,7 +322,7 @@ jobs:
           disk-size: 6000M
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none
-          script: bash blink-android/test/emulator_test.sh Sweety.apk Sweety-x86_64.apk $HOME/qwen/chat.litertlm speech emu-out
+          script: bash blink-android/test/emulator_test.sh Sweety.apk Sweety-x86_64.apk $HOME/qwen/chat.litertlm speech emu-out $PWD/voice 8089 $PWD/mocklog
 
       - name: Post the results
         if: always()
@@ -261,17 +349,25 @@ jobs:
         with:
           name: Sweety-apk
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: sweety-voice
+
       - name: Publish to the "Latest build" release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: latest
           name: Latest build
           prerelease: true
-          files: Sweety.apk
+          files: |
+            Sweety.apk
+            sweety-voice-kokoro.zip
           body: |
             Built automatically from the main branch, after passing the host and Android emulator tests.
 
             **Phone (Android 8+, 64-bit):** open this page on your phone in Chrome, tap `Sweety.apk`, allow "Install unknown apps" for Chrome when asked, then open Sweety. If Play Protect says "Unsafe app blocked", tap More details > Install anyway.
+
+            `sweety-voice-kokoro.zip` is Sweety's natural voice; the app downloads it for you (Download natural voice). It is [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M) (Apache-2.0) packaged by [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx), with espeak-ng data (GPL-3.0).
 
             Sweety's offline brain is [Needle 3](https://huggingface.co/Cactus-Compute/needle3) and [Whistle](https://huggingface.co/Cactus-Compute/whistle) on the [Cactus runtime](https://huggingface.co/Cactus-Compute/cactus) by Cactus Compute (Apache-2.0).
 

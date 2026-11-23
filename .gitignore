@@ -18,3 +18,7 @@ blink-android/app/src/main/assets/*_LICENSE.txt
 .claude/
 blink-desktop/data/
 *.log
+
+# sherpa-onnx library and wake-word model are downloaded by the Android build
+blink-android/app/libs/
+blink-android/app/src/main/assets/kws/

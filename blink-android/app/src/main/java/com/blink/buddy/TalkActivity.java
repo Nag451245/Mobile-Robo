@@ -28,6 +28,8 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     private static final int REQ_MIC = 11, REQ_CONTACT = 12;
     /** A sentence the "Hey Sweety" listener heard but needs a screen for (picking a contact). */
     static final String EXTRA_ASK = "ask";
+    /** Opened because the wake-word detector heard "Hey Sweety". */
+    static final String EXTRA_WOKE = "woke";
     private final Handler h = new Handler(Looper.getMainLooper());
     private Hearing ears;
     private TextView status, heard;
@@ -71,18 +73,33 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
         root.addView(card, cp);
         setContentView(root);
 
+        // Summoned from the lock screen (holding power/home with Sweety as the assistant): show over it.
+        if (android.os.Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true); }
+
         ears = new Hearing(this, this);
         String handed = getIntent().getStringExtra(EXTRA_ASK);
         if (handed != null) { status.setText("One moment…"); ask(handed); return; }
         status.setText("Listening… try \"remind me in 10 minutes to drink water\"");
-        startListening();
+        listenFor(getIntent());
     }
 
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
+        setIntent(intent);
         String handed = intent.getStringExtra(EXTRA_ASK);
-        if (handed != null) ask(handed);
+        if (handed != null) { ask(handed); return; }
+        status.setText("Listening…");
+        listenFor(intent);
+    }
+
+    /** Opened by "Hey Sweety" (after her chirp), by the assistant button, or by long-pressing the floating Sweety. */
+    private void listenFor(Intent i) {
+        boolean woke = i.getBooleanExtra(EXTRA_WOKE, false);
+        boolean assist = Intent.ACTION_ASSIST.equals(i.getAction()) || Intent.ACTION_VOICE_COMMAND.equals(i.getAction());
+        android.util.Log.i("SweetyTalk", "listening (" + (woke ? "Hey Sweety" : assist ? "assistant button" : "tap") + ")");
+        if (woke) { Bus.sweety(null, "wave", "curious"); h.postDelayed(this::startListening, 450); } // let her chirp finish first
+        else startListening();
     }
 
     private int px(float v) { return Math.round(v * dp); }

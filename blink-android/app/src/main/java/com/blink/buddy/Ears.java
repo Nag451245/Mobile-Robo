@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.util.Log;
 
 import java.util.ArrayList;
 
@@ -21,6 +22,10 @@ final class Ears implements RecognitionListener {
     private final SpeechRecognizer recognizer;
     private final Callback cb;
     private boolean listening;
+    /** Called instead of a problem message when the phone's recogniser itself fails (no internet, busy service…), so Whistle can take over. */
+    Runnable fallback;
+    /** Words Google's recogniser should expect (Android 13+), so "cartwheel" isn't heard as "Wilkart". */
+    static final String[] HINTS = {"Sweety", "Hey Sweety", "cartwheel", "backflip", "butterfly", "dance", "wave your hand", "alarm", "reminder", "torch", "WhatsApp"};
 
     Ears(Context ctx, Callback cb) {
         this.cb = cb;
@@ -39,6 +44,9 @@ final class Ears implements RecognitionListener {
         i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
         i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+        i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1200L);
+        if (android.os.Build.VERSION.SDK_INT >= 33) i.putExtra(RecognizerIntent.EXTRA_BIASING_STRINGS, new ArrayList<>(java.util.Arrays.asList(HINTS)));
+        Log.i("SweetyEars", "listening with the phone's speech recogniser");
         try { recognizer.startListening(i); listening = true; cb.onListening(true); }
         catch (Exception e) { cb.onProblem("I couldn't start listening."); }
     }
@@ -59,6 +67,10 @@ final class Ears implements RecognitionListener {
     @Override
     public void onError(int error) {
         done();
+        Log.i("SweetyEars", "phone recogniser error " + error);
+        boolean serviceTrouble = error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT || error == SpeechRecognizer.ERROR_SERVER
+            || error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || error >= 10; // 10+: server disconnected, language unavailable…
+        if (serviceTrouble && fallback != null) { fallback.run(); return; }
         String msg;
         switch (error) {
             case SpeechRecognizer.ERROR_NO_MATCH: msg = "I didn't catch that. Try again?"; break;
@@ -76,7 +88,7 @@ final class Ears implements RecognitionListener {
         done();
         ArrayList<String> list = results != null ? results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) : null;
         if (list == null || list.isEmpty() || list.get(0).trim().isEmpty()) cb.onProblem("I didn't catch that. Try again?");
-        else cb.onHeard(list.get(0));
+        else { Log.i("SweetyEars", "heard: \"" + list.get(0) + "\""); cb.onHeard(list.get(0)); }
     }
 
     @Override

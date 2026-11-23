@@ -178,10 +178,13 @@ public class WakeService extends Service {
         long quietSince = 0;
         long statSince = System.currentTimeMillis(), zeroSince = 0;
         double maxRms = 0;
+        float[] fbuf = new float[FRAME];
+        boolean kws = wake.load(this);
+        Log.i(TAG, kws ? "listening with the wake-word detector" : "wake-word detector unavailable (" + wake.failure + "), using Whistle");
         while (alive) {
             try {
                 if (!shouldListen()) {
-                    if (ar != null) { closeMic(ar); ar = null; }
+                    if (ar != null) { closeMic(ar); ar = null; wake.reset(); }
                     inSpeech = false; n = 0;
                     quietSince = System.currentTimeMillis();
                     Thread.sleep(250);
@@ -211,6 +214,19 @@ public class WakeService extends Service {
                 if (zeroSince > 0 && now - zeroSince > 3000) {
                     // Android hands an app pure silence when it blocks the mic (another app recording, or a background limit).
                     state = "the microphone gives only silence: another app may be using it, or the phone blocks it in the background";
+                    continue;
+                }
+                // The wake-word detector listens to everything and only reacts to "Hey Sweety".
+                if (kws && awaitUntil == 0) {
+                    for (int i = 0; i < r; i++) fbuf[i] = buf[i] / 32768f;
+                    String word = wake.accept(fbuf, r);
+                    if (word != null) {
+                        Log.i(TAG, "wake word: " + word);
+                        lastHeard = word.toLowerCase(Locale.ROOT);
+                        busy = true;
+                        closeMic(ar); ar = null; wake.reset();
+                        main.post(this::onWakeWord);
+                    }
                     continue;
                 }
                 // Phones record voice-recognition audio quite quietly, so the bar is low and follows the room's noise.
@@ -342,6 +358,37 @@ public class WakeService extends Service {
             awaitUntil = System.currentTimeMillis() + ms + 9000; // her "Yes?" plus 8 s to ask
             busy = false;
         });
+    }
+
+    private final WakeWord wake = new WakeWord();
+
+    /**
+     * "Hey Sweety" heard. Like Gemini's overlay, a small Sweety card pops up over whatever app is open and listens with
+     * the phone's own speech recogniser. Android lets Sweety open it from the background because she may draw over
+     * other apps; without that permission she answers "Yes?" and listens for the request herself.
+     */
+    private void onWakeWord() {
+        Assistant a = Assistant.get(this);
+        Bus.sweety(null, "wave", "curious");
+        if (android.provider.Settings.canDrawOverlays(this)) {
+            try {
+                if (a.voiceOn()) Sounds.play("hello");
+                startActivity(new Intent(this, TalkActivity.class).putExtra(TalkActivity.EXTRA_WOKE, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
+                Log.i(TAG, "opened the talk card");
+                updateNote("Listening… say what you need.");
+                busy = false;
+                return;
+            } catch (Exception e) { Log.w(TAG, "could not open the talk card", e); }
+        }
+        String[] hi = {"Yes?", "I'm here!", "Hi! What's up?", "Yes, sweetie?"};
+        String say = hi[(int) (System.nanoTime() % hi.length + hi.length) % hi.length];
+        Bus.sweety(say, "wave", "curious");
+        updateNote("Listening… " + say);
+        int ms = a.voiceOn() ? Sounds.play("hello") : 0;
+        main.postDelayed(() -> a.speak(say), ms + 60);
+        awaitUntil = System.currentTimeMillis() + ms + 9000;
+        busy = false;
     }
 
     private static String shorten(String t) { return t.length() > 60 ? t.substring(0, 60) + "…" : t; }

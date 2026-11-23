@@ -4,9 +4,11 @@
 #           and the app never freezes while it thinks.
 #   Phase B (the real arm64 phone build, under the emulator's ARM translation): "Hey Sweety" works while Sweety is
 #           in the BACKGROUND, in one go and in two steps; ordinary speech doesn't wake her; the chat brain loads.
-# Usage: emulator_test.sh arm64.apk x86_64.apk chat.litertlm speech_dir out_dir
+#   Smart Sweety (phase A): Gemini answers, does actions and remembers (against test/mock_gemini.py), she speaks in
+#           her natural Kokoro voice, and "Hey Sweety" (wake-word detector) pops up her talk card over other apps.
+# Usage: emulator_test.sh arm64.apk x86_64.apk chat.litertlm speech_dir out_dir [kokoro_dir mock_port mock_log_dir]
 set -u
-APK_ARM=$1; APK_X86=$2; MODEL=$3; SPEECH=$4; OUT=$5
+APK_ARM=$1; APK_X86=$2; MODEL=$3; SPEECH=$4; OUT=$5; VOICE=${6:-}; MOCK=${7:-}; MOCKLOG=${8:-}
 PKG=com.blink.buddy
 mkdir -p "$OUT"
 SUM="$OUT/summary.txt"; : > "$SUM"
@@ -41,16 +43,27 @@ adb logcat -v time >> "$LOG" 2>&1 &
 LOGPID=$!
 trap 'kill $LOGPID 2>/dev/null' EXIT
 
+write_prefs() { # write_prefs <wake true|false> <extra xml>: Sweety's settings (the app must not be running)
+  printf "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <boolean name=\"wake\" value=\"%s\" />\n    %s\n</map>\n" "$1" "$2" > "$OUT/blink.xml"
+  adb push "$OUT/blink.xml" /data/local/tmp/blink.xml >/dev/null
+  adb shell run-as $PKG mkdir -p shared_prefs files
+  adb shell run-as $PKG cp /data/local/tmp/blink.xml shared_prefs/blink.xml
+}
+
+feed() { # play a recording into Sweety's listener (debug-build test hook)
+  sox "$1" -t raw -r 16000 -e signed-integer -b 16 -c 1 "$OUT/clip.pcm" pad 0 1.5
+  adb push "$OUT/clip.pcm" /data/local/tmp/mic-test.pcm >/dev/null
+  adb shell chmod 644 /data/local/tmp/mic-test.pcm
+  adb shell run-as $PKG cp /data/local/tmp/mic-test.pcm files/mic-test.pcm
+}
+
 setup() { # setup <apk> <wake true|false> [chat|nochat]: fresh install, with the chat brain in place unless "nochat"
   adb uninstall $PKG >/dev/null 2>&1
   adb install -r -g "$1" >/dev/null || return 1
   MARK=$(lines) # checks start after the old install is gone
   adb shell pm grant $PKG android.permission.RECORD_AUDIO
   adb shell pm grant $PKG android.permission.POST_NOTIFICATIONS 2>/dev/null
-  printf "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <boolean name=\"wake\" value=\"%s\" />\n</map>\n" "$2" > "$OUT/blink.xml"
-  adb push "$OUT/blink.xml" /data/local/tmp/blink.xml >/dev/null
-  adb shell run-as $PKG mkdir -p shared_prefs files
-  adb shell run-as $PKG cp /data/local/tmp/blink.xml shared_prefs/blink.xml
+  write_prefs "$2" ""
   [ "${3:-chat}" = chat ] && { adb shell ls /data/local/tmp/sweety-chat.litertlm >/dev/null 2>&1 || { adb push "$MODEL" /data/local/tmp/sweety-chat.litertlm >/dev/null; adb shell chmod 644 /data/local/tmp/sweety-chat.litertlm; }; }
   [ "${3:-chat}" = chat ] && adb shell run-as $PKG cp /data/local/tmp/sweety-chat.litertlm files/sweety-chat.litertlm
   adb shell am start -W -n $PKG/.MainActivity >/dev/null
@@ -148,6 +161,69 @@ if setup "$APK_X86" false; then
   timed_hi 11212310 "at 11:10 PM" "Good morning" "night|silly"
   found "$A" "SweetyChat.*ready in" | sed 's/^/      /' | tee -a "$SUM"
   adb exec-out screencap -p > "$OUT/A-chat.png"
+
+  # ---------------------------------------------- Smart Sweety: Gemini brain, natural voice, wake word and talk card
+  if [ -n "$MOCK" ]; then
+    adb shell am force-stop $PKG
+    adb reverse tcp:$MOCK tcp:$MOCK >/dev/null
+    write_prefs true "<string name=\"gemini_key\">test-key</string><string name=\"gemini_base\">http://127.0.0.1:$MOCK</string>"
+    if [ -n "$VOICE" ] && [ -d "$VOICE" ]; then
+      adb push "$VOICE" /data/local/tmp/kokoro >/dev/null && adb shell chmod -R 755 /data/local/tmp/kokoro
+      adb shell run-as $PKG cp -r /data/local/tmp/kokoro files/ && note "natural voice files in place: $(adb shell run-as $PKG ls files/kokoro | tr -d '\r' | tr '\n' ' ')"
+    fi
+    G=$(lines)
+    adb shell am start -W -n $PKG/.MainActivity >/dev/null
+    sleep 6
+    gem() { # gem <what you say> <regex her reply must match> <label>
+      local from r; from=$(lines)
+      adb shell am start -n $PKG/.TalkActivity --es ask "'$1'" >/dev/null 2>&1
+      if wait_for "$from" "Sweety .*reply \[" 60; then
+        r=$(found "$from" "Sweety .*reply \[")
+        if echo "$r" | grep -qiE "$2" && tail -n +"$from" "$LOG" | grep -q "=> gemini"; then pass "$3: \"$1\" -> $r"
+        else fail "$3: \"$1\" -> $r | $(found "$from" "Sweety .*(gemini|=>)" 2 | tr '\n' '|')"; fi
+      else fail "$3: no reply to \"$1\": $(found "$from" "Sweety|SweetyChat" 4 | tr '\n' '|')"; fi
+      sleep 4
+    }
+    gem "Why is the sky blue?" "Sunlight" "answers questions with Gemini"
+    gem "Remind me to drink water when I get home" "remind you to drink water in 30 minutes" "Gemini turns a request into a phone action"
+    gem "My name is Alex" "Nice to meet you" "tells her something about you"
+    gem "What's my name?" "Alex" "remembers it later"
+    if [ -n "$MOCKLOG" ] && [ -f "$MOCKLOG/requests.jsonl" ]; then
+      grep -q "set_alarm" "$MOCKLOG/requests.jsonl" && grep -q "Right now it is" "$MOCKLOG/requests.jsonl" \
+        && pass "Gemini is told her phone actions and the time" || fail "requests to Gemini are missing the actions or the time"
+    fi
+    if [ -n "$VOICE" ]; then
+      if wait_for "$G" "SweetyVoice.*spoke" 120; then pass "speaks in her natural voice: $(found "$G" "SweetyVoice.*(ready in|spoke)" 2 | tr '\n' ' ')"
+      else fail "the natural voice didn't speak: $(found "$G" "SweetyVoice" 3 | tr '\n' '|')"; fi
+    fi
+
+    # "Hey Sweety" with Sweety in the background: the wake-word detector pops up her talk card.
+    adb shell appops set $PKG SYSTEM_ALERT_WINDOW allow
+    adb shell input keyevent KEYCODE_HOME
+    sleep 5
+    if found "$G" "SweetyWake.*(listening with the wake-word detector|wake-word detector unavailable)" | grep -q "with the wake-word"; then pass "wake-word detector loaded"
+    else fail "wake-word detector didn't load: $(found "$G" "SweetyWake" 3 | tr '\n' '|')"; fi
+    wake_card() { # wake_card <label> <wav>
+      local from; from=$(lines)
+      feed "$2"
+      if wait_for "$from" "SweetyTalk.*listening \(Hey Sweety\)" 60; then pass "$1: $(found "$from" "SweetyWake.*wake word") -> talk card opened"
+      else fail "$1: $(found "$from" "SweetyWake|SweetyTalk" 4 | grep -v "mic: loudest" | tr '\n' '|')"; fi
+      sleep 3; adb exec-out screencap -p > "$OUT/A-card.png"
+      adb shell input keyevent KEYCODE_BACK; adb shell input keyevent KEYCODE_HOME; sleep 5
+    }
+    wake_card "\"Hey Sweety\" (clear voice)" "$SPEECH/1-en_US-amy-medium.wav"
+    wake_card "\"Hey Sweety, what time is it?\" through a phone mic with echo" "$SPEECH/2-phone.wav"
+    wake_card "\"Hi Sweety\" in a noisy room" "$SPEECH/3-noisy.wav"
+    wake_card "\"Hello Sweety!\" (British voice)" "$SPEECH/8-en_GB-alba-medium.wav"
+    if [ -f "$SPEECH/long_negative.wav" ]; then
+      sox "$SPEECH/long_negative.wav" "$OUT/chatter.wav" trim 0 60
+      from=$(lines)
+      feed "$OUT/chatter.wav"
+      sleep 70
+      if tail -n +"$from" "$LOG" | grep -q "SweetyWake.*wake word"; then fail "a minute of ordinary chatter woke her: $(found "$from" "SweetyWake.*wake word")"
+      else pass "a minute of ordinary chatter (sweet, sweater, hey there…) didn't wake her"; fi
+    fi
+  fi
   frozen "$A" "phase A"
 else fail "could not install the x86_64 build"; fi
 
@@ -170,34 +246,26 @@ if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
   if wait_for "$from" "SweetyWake.*mic: loudest" 30; then pass "microphone is open with Sweety in the background: $(found "$from" "SweetyWake.*mic: loudest")"
   else fail "no microphone readings with Sweety in the background: $(found "$from" "SweetyWake" 3)"; fi
 
-  feed() { # play a recording into Sweety's listener (debug-build test hook)
-    sox "$1" -t raw -r 16000 -e signed-integer -b 16 -c 1 "$OUT/clip.pcm" pad 0 1.5
-    adb push "$OUT/clip.pcm" /data/local/tmp/mic-test.pcm >/dev/null
-    adb shell chmod 644 /data/local/tmp/mic-test.pcm
-    adb shell run-as $PKG cp /data/local/tmp/mic-test.pcm files/mic-test.pcm
-  }
   wake_case() { # wake_case <label> <wav> <regex that must follow> <secs> [pause after]
     local label=$1 wav=$2 want=$3 secs=$4 rest=${5:-6} from
     from=$(lines)
     feed "$wav"
-    if wait_for "$from" "$want" "$secs"; then pass "$label: $(found "$from" "SweetyWake.*(Whistle heard|command)|Sweety .*reply" 3 | tr '\n' ' ')"
+    if wait_for "$from" "$want" "$secs"; then pass "$label: $(found "$from" "SweetyWake.*(wake word|Whistle heard|command)|Sweety .*reply" 3 | tr '\n' ' ')"
     else fail "$label: $(found "$from" "SweetyWake|Sweety " 8 | grep -v "mic: loudest" | tr '\n' '|')"; fi
     sleep "$rest"
   }
   wake_case "one go, \"Hey Sweety, what time is it?\"" "$SPEECH/2-en_US-amy-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 300
   wake_case "one go, \"Hey Sweety, dance for me\", quiet and far away" "$SPEECH/4-quiet.wav" "Sweety .*reply \[dance" 300
-  wake_case "two steps: \"Hey Sweety\"" "$SPEECH/1-en_GB-alba-medium.wav" "SweetyWake.*wake phrase found, rest: \"\"" 300 0
+  wake_case "two steps: \"Hey Sweety\"" "$SPEECH/1-en_GB-alba-medium.wav" "SweetyWake.*(wake word|wake phrase found, rest: \"\")" 300 0
   wake_case "two steps: then \"What time is it?\"" "$SPEECH/13-en_US-ryan-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 300
   wake_case "one go, \"Hi Sweety, set an alarm for 7 am\", noisy room" "$SPEECH/3-noisy.wav" "Sweety .*reply \[.*\]: (Alarm set for 7|I couldn't find a clock)" 300
   wake_case "one go, \"Hey Sweety, do a backflip\" (male voice)" "$SPEECH/6-en_US-ryan-medium.wav" "Sweety .*reply \[flip" 300
   for n in 9 11; do
     from=$(lines)
     feed "$SPEECH/$n-en_US-amy-medium.wav"
-    if wait_for "$from" "SweetyWake.*Whistle heard" 300; then
-      sleep 5
-      if tail -n +"$from" "$LOG" | grep -q "wake phrase found"; then fail "ordinary speech woke her: $(found "$from" "SweetyWake.*Whistle heard")"
-      else pass "ordinary speech did not wake her: $(found "$from" "SweetyWake.*Whistle heard")"; fi
-    else fail "nothing heard for an ordinary-speech clip"; fi
+    sleep 25
+    if tail -n +"$from" "$LOG" | grep -qE "SweetyWake.*(wake word|wake phrase found)"; then fail "ordinary speech woke her: $(found "$from" "SweetyWake.*(wake word|Whistle heard)")"
+    else pass "ordinary speech did not wake her ($(sed -n "${n}p" "$SPEECH/../wake_phrases.tsv" 2>/dev/null | cut -f2))"; fi
   done
   adb shell dumpsys notification --noredact 2>/dev/null | grep -A30 "sweety_wake" | grep -E "android.(title|text|bigText)=" | head -3 | sed 's/^ */      notification: /' | tee -a "$SUM"
 

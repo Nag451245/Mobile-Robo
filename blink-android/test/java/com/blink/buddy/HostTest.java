@@ -83,6 +83,57 @@ public class HostTest {
         System.out.println((tw != null ? "ok    " : "FAIL  ") + "midnight dance: " + tw);
     }
 
+    static void check(boolean ok, String what) {
+        if (!ok) fails++;
+        System.out.println((ok ? "ok    " : "FAIL  ") + what);
+    }
+
+    /** Sweety's Gemini brain against the stand-in server (test/mock_gemini.py). */
+    static void gemini(String base) {
+        java.util.Map<String, String> kv = new java.util.HashMap<>();
+        GeminiBrain.Store st = new GeminiBrain.Store() {
+            @Override public String get(String k, String d) { return kv.getOrDefault(k, d); }
+            @Override public void put(String k, String v) { kv.put(k, v); }
+        };
+        kv.put("gemini_key", "test-key");
+        GeminiBrain g = new GeminiBrain(st, base);
+        java.util.List<String> memory = new java.util.ArrayList<>();
+        check("gemini-3.8-flash".equals(g.model()), "picks the newest plain Flash model: " + g.model());
+
+        GeminiBrain.Answer a = g.ask("Why is the sky blue?", memory);
+        check(a != null && a.text.startsWith("Sunlight") && a.gesture.equals("nod") && a.emotion.equals("happy") && a.calls.isEmpty(),
+            "answers a question with words, gesture and mood: " + (a == null ? g.lastError : "[" + a.gesture + "/" + a.emotion + "] " + a.text));
+
+        a = g.ask("Remind me to drink water when I get home", memory);
+        check(a != null && a.calls.size() == 1 && a.calls.get(0).name.equals("set_timer") && a.calls.get(0).args.optInt("minutes") == 30,
+            "turns a request into a phone action: " + (a == null ? g.lastError : a.calls.isEmpty() ? "(none)" : a.calls.get(0).name + " " + a.calls.get(0).args));
+
+        a = g.ask("My name is Alex", memory);
+        check(a != null && a.remember.size() == 1 && a.remember.get(0).contains("Alex") && a.text.contains("Nice to meet you"),
+            "remembers facts the user shares: " + (a == null ? g.lastError : a.remember + " / " + a.text));
+        if (a != null) memory.addAll(a.remember);
+
+        a = g.ask("What's my name?", memory);
+        check(a != null && a.text.contains("Alex"), "uses what she remembers: " + (a == null ? g.lastError : a.text));
+
+        a = g.ask("What did I just ask?", memory);
+        check(a != null && a.text.toLowerCase(java.util.Locale.ROOT).contains("what's my name"), "keeps the conversation going: " + (a == null ? g.lastError : a.text));
+
+        a = g.ask("Catch the butterfly please", memory);
+        check(a != null && a.calls.size() == 1 && "catch".equals(a.calls.get(0).args.optString("action")), "can start a trick: " + (a == null ? g.lastError : a.calls.isEmpty() ? "(none)" : a.calls.get(0).args));
+
+        kv.put("gemini_key", "wrong-key");
+        GeminiBrain bad = new GeminiBrain(st, base);
+        a = bad.ask("Hello?", memory);
+        check(a == null && bad.lastError != null && bad.lastError.contains("key"), "a wrong key is reported clearly: " + bad.lastError);
+
+        GeminiBrain nokey = new GeminiBrain(new GeminiBrain.Store() {
+            @Override public String get(String k, String d) { return d; }
+            @Override public void put(String k, String v) { }
+        }, base);
+        check(!nokey.configured() && nokey.ask("hi", memory) == null, "without a key she doesn't call Gemini at all");
+    }
+
     /** The new voice tricks: catch a butterfly or bird, hide, come back. */
     static void tricks() {
         String[][] cases = {
@@ -137,6 +188,7 @@ public class HostTest {
 
     public static void main(String[] a) throws Exception {
         if (a.length > 0 && a[0].equals("tools")) { System.out.print(Call.TOOLS_JSON); return; }
+        if (a.length > 1 && a[0].equals("gemini")) { gemini(a[1]); finish(); return; }
         if (a.length > 1 && a[0].equals("needle")) { needle(a[1]); finish(); return; }
         if (a.length > 0) { transcripts(a[0]); finish(); return; }
         wake("Hey Sweety.", "");
