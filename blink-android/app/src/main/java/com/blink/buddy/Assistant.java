@@ -296,8 +296,10 @@ final class Assistant {
         if (DayTime.now() == DayTime.LATE && "happy".equals(emotion) && ("nod".equals(action) || "wave".equals(action))) emotion = "sleepy";
         host.say(text);
         host.cue(action, emotion);
-        // Gesture sound first ("tee-hee", "bee-doo!", a dance tune), then her words.
-        int ms = voiceOn() ? Sounds.forAction(action, emotion) : 0;
+        // A trick's sound first (a dance tune, a boing), then her words. Ordinary replies go straight to her voice:
+        // a chirp before every answer sounded like a squeak and made her slower to reply.
+        boolean trick = action != null && java.util.Arrays.asList("dance", "flip", "cartwheel", "spin", "jump").contains(action);
+        int ms = voiceOn() && trick ? Sounds.forAction(action, emotion) : 0;
         if (ms > 0) main.postDelayed(() -> speak(text), Math.min(ms, 900) + 80);
         else speak(text);
     }

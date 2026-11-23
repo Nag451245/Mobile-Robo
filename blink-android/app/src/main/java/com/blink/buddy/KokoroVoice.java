@@ -107,66 +107,119 @@ final class KokoroVoice {
         } finally { loading = false; }
     }
 
-    /** Splits a reply into sentences, so the first one plays while the next is being made. */
+    /**
+     * Splits a reply into chunks to say: sentences, with short ones joined, and a short first chunk (up to the first
+     * comma of a long first sentence) so she starts talking as soon as possible.
+     */
     static List<String> sentences(String text) {
         List<String> out = new ArrayList<>();
         for (String s : text.split("(?<=[.!?…])\\s+")) {
             s = s.trim();
             if (s.isEmpty()) continue;
-            if (!out.isEmpty() && out.get(out.size() - 1).length() < 25) out.set(out.size() - 1, out.get(out.size() - 1) + " " + s);
+            if (out.size() > 1 && out.get(out.size() - 1).length() < 25) out.set(out.size() - 1, out.get(out.size() - 1) + " " + s);
             else out.add(s);
+        }
+        if (!out.isEmpty() && out.get(0).length() > 60) { // "Sunlight scatters off the air, and blue light..." -> two parts
+            String first = out.get(0);
+            int cut = -1;
+            for (int i = 15; i < first.length() - 15; i++) if (",;:".indexOf(first.charAt(i)) >= 0) { cut = i + 1; break; }
+            if (cut > 0) { out.set(0, first.substring(0, cut).trim()); out.add(1, first.substring(cut).trim()); }
         }
         return out;
     }
 
-    /** Says the text in the natural voice. speed 1 = normal. */
+    /** Cuts the quiet the voice adds before and after each chunk, keeping a natural 40 ms edge. */
+    static float[] trim(float[] pcm, int rate) {
+        float peak = 0;
+        for (float v : pcm) peak = Math.max(peak, Math.abs(v));
+        float bar = Math.max(0.004f, peak * 0.02f);
+        int a = 0, b = pcm.length - 1;
+        while (a < b && Math.abs(pcm[a]) < bar) a++;
+        while (b > a && Math.abs(pcm[b]) < bar) b--;
+        int edge = rate / 25;
+        a = Math.max(0, a - edge); b = Math.min(pcm.length - 1, b + edge);
+        return java.util.Arrays.copyOfRange(pcm, a, b + 1);
+    }
+
+    private static final float[] END = new float[0];
+
+    /**
+     * Says the text in the natural voice (speed 1 = normal). One thread makes the audio a chunk at a time while
+     * another plays it through a single stream, so the next chunk is ready by the time the last one ends: no stops,
+     * no gaps beyond a short natural pause between sentences.
+     */
     void speak(String text, float speed) {
         final int gen = ++generation;
         playing = true;
         speaker.execute(() -> {
+            java.util.concurrent.BlockingQueue<float[]> ready = new java.util.concurrent.LinkedBlockingQueue<>();
+            final int[] rate = {0};
+            Thread player = null;
             try {
                 if (tts == null) warm();
                 OfflineTts t = tts;
                 if (t == null) return;
                 // Numbers, times and symbols become words: the voice skips anything not in its dictionary.
                 for (String s : sentences(SpeakText.prepare(text))) {
-                    if (gen != generation) return;
+                    if (gen != generation) break;
                     long t0 = System.currentTimeMillis();
                     GeneratedAudio a = t.generate(s, speakerId(), speed);
                     float[] pcm = a.getSamples();
                     if (pcm == null || pcm.length == 0 || a.getSampleRate() <= 0) { Log.w(TAG, "no audio for: " + s); continue; }
+                    pcm = trim(pcm, a.getSampleRate());
                     Log.i(TAG, "spoke " + (pcm.length * 1000L / a.getSampleRate()) + " ms of audio, made in " + (System.currentTimeMillis() - t0) + " ms");
-                    if (gen != generation) return;
-                    play(pcm, a.getSampleRate(), gen);
+                    if (player == null) {
+                        rate[0] = a.getSampleRate();
+                        player = new Thread(() -> playAll(ready, rate[0], gen), "sweety-voice-play");
+                        player.start();
+                    }
+                    ready.put(pcm);
                 }
             } catch (Throwable e) {
                 Log.w(TAG, "could not speak", e);
             } finally {
+                ready.offer(END);
+                try { if (player != null) player.join(); } catch (InterruptedException ignored) { }
                 if (gen == generation) playing = false;
             }
         });
     }
 
-    private void play(float[] pcm, int rate, int gen) {
+    /** Plays chunks as they come, through one audio stream, with a short pause between them. */
+    private void playAll(java.util.concurrent.BlockingQueue<float[]> ready, int rate, int gen) {
         int min = AudioTrack.getMinBufferSize(rate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT);
         AudioTrack at = new AudioTrack.Builder()
             .setAudioAttributes(new AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             .setAudioFormat(new AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-            .setBufferSizeInBytes(Math.max(min, rate)).setTransferMode(AudioTrack.MODE_STREAM).build();
+            .setBufferSizeInBytes(Math.max(min, rate / 5 * 4)).setTransferMode(AudioTrack.MODE_STREAM).build();
         synchronized (this) { track = at; }
+        float[] pause = new float[rate * 9 / 100]; // 90 ms between sentences
+        long written = 0;
         try {
             at.play();
-            // Lip-sync: the avatar gets this sentence's loudness and brightness as it starts playing.
-            float[][] env = Bus.envelope(pcm, rate, 30);
-            Bus.speech(env[0], env[1], 30);
-            int off = 0;
-            while (off < pcm.length && gen == generation) {
-                int n = Math.min(4096, pcm.length - off);
-                int w = at.write(pcm, off, n, AudioTrack.WRITE_BLOCKING);
-                if (w <= 0) break;
-                off += w;
+            boolean first = true;
+            while (gen == generation) {
+                float[] pcm = ready.take();
+                if (pcm == END) break;
+                if (!first) { at.write(pause, 0, pause.length, AudioTrack.WRITE_BLOCKING); written += pause.length; }
+                first = false;
+                // Lip-sync: the avatar gets this chunk's loudness and brightness as it starts playing.
+                float[][] env = Bus.envelope(pcm, rate, 30);
+                Bus.speech(env[0], env[1], 30);
+                int off = 0;
+                while (off < pcm.length && gen == generation) {
+                    int w = at.write(pcm, off, Math.min(2048, pcm.length - off), AudioTrack.WRITE_BLOCKING);
+                    if (w <= 0) break;
+                    off += w;
+                }
+                written += off;
             }
-            if (gen == generation) { at.stop(); Thread.sleep(Math.min(400, pcm.length * 1000L / rate / 10)); }
+            // let the last of it play out, then stop
+            if (gen == generation) {
+                long end = System.currentTimeMillis() + 2000;
+                while (gen == generation && at.getPlaybackHeadPosition() < written && System.currentTimeMillis() < end) Thread.sleep(20);
+                at.stop();
+            }
         } catch (Exception ignored) {
         } finally {
             synchronized (this) { if (track == at) track = null; }
