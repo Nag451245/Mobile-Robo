@@ -62,8 +62,7 @@ final class WakeWord {
     /** Feeds 16 kHz mono audio; returns the keyword heard (e.g. "HEY SWEETY") or null. */
     String accept(float[] pcm, int n) {
         if (kws == null) return null;
-        float[] a = java.util.Arrays.copyOf(pcm, n);
-        agc(a);
+        float[] a = n == pcm.length ? pcm : java.util.Arrays.copyOf(pcm, n);
         stream.acceptWaveform(a, 16000);
         while (kws.isReady(stream)) {
             kws.decode(stream);
@@ -76,29 +75,8 @@ final class WakeWord {
         return null;
     }
 
-    /*
-     * Automatic gain: phones record voice quietly, and the detector hears quiet speech worse (tests: clean speech
-     * caught 91% -> 97%). Tracks the loudness every 10 ms (fast up, slow down) and scales it towards AGC_TARGET,
-     * at most 8x. test/kws.py does exactly the same, so the tests measure what the phone hears.
-     */
-    static final float AGC_TARGET = 0.05f;
-    private float level = 0.02f;
-
-    private void agc(float[] x) {
-        for (int i = 0; i < x.length; i += 160) {
-            int e = Math.min(x.length, i + 160);
-            double s = 0;
-            for (int j = i; j < e; j++) s += x[j] * x[j];
-            float rms = (float) Math.sqrt(s / (e - i));
-            level += (rms - level) * (rms > level ? 0.2f : 0.005f);
-            float g = Math.min(8f, AGC_TARGET / Math.max(level, 1e-4f));
-            for (int j = i; j < e; j++) x[j] = Math.max(-1f, Math.min(1f, x[j] * g));
-        }
-    }
-
     /** Forget any half-heard audio (after Sweety talked, or the mic was closed). */
     void reset() {
-        level = 0.02f;
         if (kws == null) return;
         try { stream.release(); } catch (Throwable ignored) { }
         stream = kws.createStream("");

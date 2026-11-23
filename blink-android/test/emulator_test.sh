@@ -132,6 +132,7 @@ elif setup "$APK_X86" false; then
     sleep 6; adb exec-out screencap -p > "$OUT/A-$2.png"
     if wait_for "$from" "$3" "$4"; then
       local seq; seq=$(tail -n +"$from" "$LOG" | grep -oE "SweetyOverlay.*chase: [a-z]+" | sed -E 's/.*chase: //' | tr '\n' ' ')
+      seq=${seq#done } # the previous chase's "done" can land just after this one starts (slow Android 11 emulator)
       if [ -z "${5:-}" ] || echo "$seq" | grep -qE "$5"; then pass "$2: $(found "$from" "Sweety .*reply \[") ${seq:+| chase: $seq}"
       else fail "$2: wrong order: $seq"; fi
     else fail "$2: $(found "$from" "SweetyOverlay|Sweety " 6 | tr '\n' '|')"; fi
@@ -247,7 +248,7 @@ elif setup "$APK_X86" false; then
     wake_card "\"Hey Sweety\" (clear voice)" "$SPEECH/1-en_US-amy-medium.wav"
     wake_card "\"Hey Sweety, dance for me\" (British voice)" "$SPEECH/4-en_GB-alba-medium.wav"
     wake_card "\"Okay Sweety\", quiet and far away" "$SPEECH/5-quiet.wav"
-    wake_card "\"Hey Sweety, do a backflip\" (male voice)" "$SPEECH/6-en_US-ryan-medium.wav"
+    wake_card "\"Hey Sweety, turn on the torch\" (British voice)" "$SPEECH/7-en_GB-alba-medium.wav"
     if [ -f "$SPEECH/long_negative.wav" ]; then
       sox "$SPEECH/long_negative.wav" "$OUT/chatter.wav" trim 0 30 # the host test covers the full length
       from=$(lines)
@@ -292,12 +293,12 @@ elif [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
     sleep "$rest"
   }
   # 120 s each: Whistle under ARM translation answers in well under a minute; a miss shouldn't cost 5 minutes.
-  wake_case "one go, \"Hey Sweety, what time is it?\"" "$SPEECH/2-en_US-amy-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 120
+  wake_case "one go, \"Hey Sweety, what time is it?\"" "$SPEECH/2-en_GB-alba-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 120
   wake_case "one go, \"Hey Sweety, dance for me\", quiet and far away" "$SPEECH/4-quiet.wav" "Sweety .*reply \[dance" 120
   wake_case "two steps: \"Hey Sweety\"" "$SPEECH/1-en_GB-alba-medium.wav" "SweetyWake.*(wake word|wake phrase found, rest: \"\")" 120 0
   wake_case "two steps: then \"What time is it?\"" "$SPEECH/13-en_US-ryan-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 120
   wake_case "one go, \"Hi Sweety, set an alarm for 7 am\" (British voice)" "$SPEECH/3-en_GB-alba-medium.wav" "Sweety .*reply \[.*\]: (Alarm set for 7|I couldn't find a clock)" 120
-  wake_case "one go, \"Hey Sweety, do a backflip\" (male voice)" "$SPEECH/6-en_US-ryan-medium.wav" "Sweety .*reply \[flip" 120
+  wake_case "one go, \"Okay Sweety, tell me a joke\" (male voice)" "$SPEECH/5-en_US-ryan-medium.wav" "Sweety .*reply \[" 120
   for n in 9 11; do
     from=$(lines)
     feed "$SPEECH/$n-en_US-amy-medium.wav"

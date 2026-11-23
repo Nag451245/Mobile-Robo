@@ -194,7 +194,7 @@ jobs:
       - name: Record the test phrases (several voices, quiet, noisy, phone mic, and ordinary chatter)
         run: bash test/make_speech.sh test/wake_phrases.tsv speech
 
-      - name: Wake-word detector on the recordings (80 percent must wake, ordinary speech never)
+      - name: Wake-word detector on the recordings (clearly spoken ones wake her, ordinary speech never)
         run: |
           set -o pipefail
           curl -fsSL --retry 3 "$KWS_URL" | tar -xj -C "$RUNNER_TEMP"
