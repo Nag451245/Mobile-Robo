@@ -32,6 +32,10 @@ NEAR_MISSES = ["sweaty", "it was hot and sweaty", "those sweaty socks", "sweater
                "sweet pea", "Swiss tea", "the suite", "hey sweater", "sweeties", "hey Sweden", "see you sweety pie",
                "hey Suzy", "hey Sid", "OK computer", "hello city", "hi Steve", "hey Sweeney"]
 LIBRISPEECH = "https://www.openslr.org/resources/12/{}.tar.gz"
+# Big negatives: LibriSpeech train-clean-100 (CC BY 4.0), streamed straight from the archive (never unpacked)
+BIG_NEGATIVES = ["https://us.openslr.org/resources/12/train-clean-100.tar.gz",
+                 "https://openslr.elda.org/resources/12/train-clean-100.tar.gz",
+                 "https://www.openslr.org/resources/12/train-clean-100.tar.gz"]
 GENERATOR = "https://github.com/rhasspy/piper-sample-generator/releases/download/v2.0.0/en_US-libritts_r-medium.pt"
 GENERATOR_CONFIG = "https://raw.githubusercontent.com/rhasspy/piper-sample-generator/v3.2.0/models/en_US-libritts_r-medium.pt.json"
 FEATURES = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/{}.onnx"
@@ -190,6 +194,61 @@ def window_feats(mel, emb, windows):
     return emb.run(None, {"input_1": x.astype(np.float32)})[0].reshape(B, 16, 96).astype(np.float32)
 
 
+def stream_embeddings(mel, emb, audio, batch=512):
+    """Embeddings every 80 ms over long audio, as the phone computes them (see stream_scores)."""
+    pcm = np.concatenate([np.zeros(480, np.float32), to_int16(audio).astype(np.float32)])
+    n = (len(pcm) - 480) // 1280
+    frames = [np.ones((76, 32), np.float32)]
+    for b in range(0, n, batch):
+        x = np.stack([pcm[i * 1280:i * 1280 + 1760] for i in range(b, min(n, b + batch))])
+        frames.append(mel.run(None, {"input": x})[0].reshape(-1, 32) / 10 + 2)
+    m = np.concatenate(frames).astype(np.float32)
+    out = []
+    for b in range(0, n, batch):
+        x = np.stack([m[8 * (i + 1):8 * (i + 1) + 76] for i in range(b, min(n, b + batch))])[:, :, :, None]
+        out.append(emb.run(None, {"input_1": x})[0].reshape(-1, 96))
+    return np.concatenate(out) if out else np.zeros((0, 96), np.float32)
+
+
+def big_negatives(mel, emb, hours, rng, babble, stride=12):
+    """16-embedding windows (every ~1 s) from up to `hours` of LibriSpeech train-clean-100, read straight from the
+    download as it arrives; a third of it with made-up echo, phone tone and noise. Kept as float16 to fit in memory."""
+    import io, soundfile as sf
+    for url in BIG_NEGATIVES:
+        try:
+            log("streaming", url)
+            resp = urllib.request.urlopen(url, timeout=60)
+            tar = tarfile.open(fileobj=resp, mode="r|gz")
+            windows, buf, got, t0 = [], [], 0.0, time.time()
+
+            def flush():
+                a = np.concatenate(buf)
+                if rng.random() < 0.33:
+                    a = augment(a, rng, babble)
+                e = stream_embeddings(mel, emb, a)
+                for k in range(15, len(e), stride):
+                    windows.append(e[k - 15:k + 1].astype(np.float16))
+
+            for member in tar:
+                if not member.name.endswith(".flac"):
+                    continue
+                a, _ = sf.read(io.BytesIO(tar.extractfile(member).read()), dtype="float32")
+                buf.append(a)
+                got += len(a) / SR / 3600
+                if sum(len(x) for x in buf) > SR * 600:  # every 10 minutes of speech
+                    flush(); buf = []
+                    log(f"  {got:.1f} h of everyday speech, {len(windows)} windows")
+                if got >= hours or time.time() - t0 > 3 * 3600:
+                    break
+            if buf:
+                flush()
+            log(f"{got:.1f} h of everyday speech -> {len(windows)} windows")
+            return np.stack(windows)
+        except Exception as ex:
+            log("  failed:", ex)
+    raise RuntimeError("couldn't get the big negative set from any mirror")
+
+
 def stream_scores(mel, emb, head, audio, batch=512):
     """Scores every 80 ms over long audio, the way the phone does it (WakeModel.java), batched for speed:
     each 80 ms chunk's mel frames come from that chunk plus the 30 ms before it (1760 samples -> 8 frames, scaled
@@ -234,7 +293,8 @@ def main():
     ap.add_argument("--positives", type=int, default=700, help="samples per wake phrase")
     ap.add_argument("--near", type=int, default=150, help="samples per near-miss phrase")
     ap.add_argument("--requests", type=int, default=120, help="samples per request phrase")
-    ap.add_argument("--steps", type=int, default=12000)
+    ap.add_argument("--steps", type=int, default=30000)
+    ap.add_argument("--neg-hours", type=float, default=100, help="hours of everyday speech to learn 'not Hey Sweety' from")
     args = ap.parse_args()
     os.makedirs(args.work, exist_ok=True); os.makedirs(args.out, exist_ok=True)
     rng = np.random.default_rng(1)
@@ -306,29 +366,50 @@ def main():
     Vp = embed(windows_pos(pos_val, 1))
     Vn = embed(windows_neg(near_val, 2))
     log(f"train: {len(Xp)} wake windows, {len(Xnear)} near misses, {len(Xn)} other sounds; check: {len(Vp)} wake, {len(Vn)} near misses")
+    Xbig = big_negatives(mel_s, emb_s, args.neg_hours, rng, dev)  # float16, (N, 16, 96)
 
     log("training")
     model = build_model(torch)
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-    sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=1e-3, total_steps=args.steps)
     Xp_t, Xnear_t, Xn_t = torch.from_numpy(Xp), torch.from_numpy(Xnear), torch.from_numpy(Xn)
+    Xbig_t = torch.from_numpy(Xbig)
     bce = torch.nn.BCELoss(reduction="none")
-    for step in range(args.steps):
-        ip = torch.randint(0, len(Xp_t), (128,)); inr = torch.randint(0, len(Xnear_t), (128,)); ineg = torch.randint(0, len(Xn_t), (256,))
-        x = torch.cat([Xp_t[ip], Xnear_t[inr], Xn_t[ineg]]); y = torch.cat([torch.ones(128), torch.zeros(384)])
-        p = model(x).squeeze(1)
-        # false wake-ups cost more than misses, and more as training goes on (openWakeWord's recipe); near misses 3x
-        wneg = 1 + 9 * step / args.steps
-        w = torch.cat([torch.ones(128), torch.full((128,), 3 * wneg), torch.full((256,), wneg)])
-        loss = (bce(p, y) * w).mean()
-        opt.zero_grad(); loss.backward(); opt.step(); sched.step()
-        if step % 2000 == 0 or step == args.steps - 1:
-            model.eval()
-            with torch.no_grad():
-                rp = (model(torch.from_numpy(Vp)).squeeze(1) > 0.5).float().mean().item()
-                fn = (model(torch.from_numpy(Vn)).squeeze(1) > 0.5).float().mean().item()
-            model.train()
-            log(f"step {step}: loss {loss.item():.4f}, held-out wake {rp:.1%}, near misses woken {fn:.1%}")
+
+    def train(steps, hard=None):
+        """Each batch: 128 wake windows, 96 near misses, 96 short sounds, 192 from the big everyday speech (or, in
+        the second pass, half of those from the speech the model got wrong). False wake-ups cost more, and more as
+        training goes on (openWakeWord's recipe); near misses 3x."""
+        opt = torch.optim.Adam(model.parameters(), lr=1e-3)
+        sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=1e-3, total_steps=steps)
+        model.train()
+        for step in range(steps):
+            parts = [Xp_t[torch.randint(0, len(Xp_t), (128,))], Xnear_t[torch.randint(0, len(Xnear_t), (96,))],
+                     Xn_t[torch.randint(0, len(Xn_t), (96,))]]
+            if hard is not None and len(hard):
+                parts += [Xbig_t[torch.randint(0, len(Xbig_t), (96,))].float(), hard[torch.randint(0, len(hard), (96,))]]
+            else:
+                parts += [Xbig_t[torch.randint(0, len(Xbig_t), (192,))].float()]
+            x = torch.cat(parts); y = torch.cat([torch.ones(128), torch.zeros(384)])
+            p = model(x).squeeze(1)
+            wneg = 1 + 9 * step / steps
+            w = torch.cat([torch.ones(128), torch.full((96,), 3 * wneg), torch.full((288,), wneg)])
+            loss = (bce(p, y) * w).mean()
+            opt.zero_grad(); loss.backward(); opt.step(); sched.step()
+            if step % 5000 == 0 or step == steps - 1:
+                model.eval()
+                with torch.no_grad():
+                    rp = (model(torch.from_numpy(Vp)).squeeze(1) > 0.5).float().mean().item()
+                    fn = (model(torch.from_numpy(Vn)).squeeze(1) > 0.5).float().mean().item()
+                model.train()
+                log(f"step {step}: loss {loss.item():.4f}, held-out wake {rp:.1%}, near misses woken {fn:.1%}")
+        model.eval()
+
+    train(args.steps)
+    # Second pass: everyday speech the model still scores above 0.1 is shown far more often.
+    with torch.no_grad():
+        sc = torch.cat([model(Xbig_t[i:i + 8192].float()).squeeze(1) for i in range(0, len(Xbig_t), 8192)])
+    hard = Xbig_t[sc > 0.1].float()
+    log(f"hard negatives: {len(hard)} of {len(Xbig_t)} everyday-speech windows still score above 0.1")
+    train(args.steps // 2, hard)
 
     model.eval()
     onnx_path = os.path.join(args.out, "hey_sweety.onnx")

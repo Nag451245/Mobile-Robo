@@ -84,7 +84,12 @@ jobs:
               rm -rf src/main/assets/wake; break
             fi
           done
-          ls -la src/main/assets/wake 2>/dev/null && cat src/main/assets/wake/metrics.json | head -c 300 || true
+          # Ships only if its report says it's good enough (wakes on most clips, under 2 false wake-ups an hour)
+          if [ -f src/main/assets/wake/metrics.json ] && ! python ../wakeword/good_enough.py src/main/assets/wake/metrics.json; then
+            echo "::warning::the trained Hey Sweety model isn't good enough yet; the app keeps the keyword spotter"
+            rm -rf src/main/assets/wake
+          fi
+          ls -la src/main/assets/wake 2>/dev/null || true
 
       - name: Natural voice model (cached)
         id: kokoro
@@ -218,6 +223,7 @@ jobs:
           python test/kws.py prepare "$RUNNER_TEMP/$KWS_DIR" kws > /dev/null
           # The app uses Sweety's own trained model when it exists (same files the build puts in assets/wake), else the spotter.
           mkdir -p wake; for f in hey_sweety.onnx metrics.json melspectrogram.onnx embedding_model.onnx; do curl -fsSL --retry 3 -o "wake/$f" "$WAKE_MODEL_URL/$f" || { rm -rf wake; break; }; done
+          [ -f wake/metrics.json ] && ! python wakeword/good_enough.py wake/metrics.json && rm -rf wake  # same gate as the build
           if [ -f wake/hey_sweety.onnx ]; then
             python test/wake.py test wake speech/list.tsv speech/long_negative.wav 2>&1 | tee logs/6-wakeword.log
           else
