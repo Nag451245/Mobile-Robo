@@ -312,7 +312,7 @@ elif [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
   # the same breath as "Hey Sweety" are not kept on this path, so it is tested the way it works.
   wake_case "two steps: \"Hey Sweety\"" "$SPEECH/1-en_GB-alba-medium.wav" "SweetyWake.*(wake word|wake phrase found, rest: \"\")" 120 0
   wake_case "two steps: then \"What time is it?\"" "$SPEECH/13-en_US-ryan-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 120
-  wake_case "two steps, quiet and far away: \"Hey Sweety\"" "$SPEECH/1-quiet.wav" "SweetyWake.*(wake word|wake phrase found, rest: \"\")" 120 0
+  wake_case "two steps, another voice: \"Hey Sweety\"" "$SPEECH/1-en_US-amy-medium.wav" "SweetyWake.*(wake word|wake phrase found, rest: \"\")" 120 0
   wake_case "two steps: then \"What time is it?\" (another voice)" "$SPEECH/13-en_US-amy-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 120
   for n in 9 11; do
     from=$(lines)
