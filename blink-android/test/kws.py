@@ -54,11 +54,49 @@ def load_wav(path):
     return a
 
 
-def spotter(d):
+def spotter(d, keywords=None):
     import sherpa_onnx
     return sherpa_onnx.KeywordSpotter(
         tokens=f"{d}/tokens.txt", encoder=f"{d}/encoder.onnx", decoder=f"{d}/decoder.onnx", joiner=f"{d}/joiner.onnx",
-        keywords_file=f"{d}/keywords.txt", num_threads=1, max_active_paths=4, num_trailing_blanks=1, provider="cpu")
+        keywords_file=keywords or f"{d}/keywords.txt", num_threads=1, max_active_paths=4, num_trailing_blanks=1, provider="cpu")
+
+
+def keyword_lines(d, phrases, boost, threshold):
+    import sentencepiece as spm
+    sp = spm.SentencePieceProcessor(model_file=f"{d}/bpe.model")
+    return [" ".join(sp.encode(p, out_type=str)) + f" :{boost} #{threshold} @{p.replace(' ', '_')}" for p in phrases]
+
+
+def sweep(model_dir, d, listfile, long_negative):
+    """Tries sensitivity settings and prints detection and false wake-ups for each, best first."""
+    clips = []
+    for line in open(listfile, encoding="utf-8"):
+        parts = line.rstrip("\n").split("\t")
+        if len(parts) >= 2:
+            clips.append((parts[0].startswith("wake"), "espeak" in parts[1], "phone" in parts[1], load_wav(parts[1])))
+    neg = load_wav(long_negative) if long_negative and os.path.exists(long_negative) else None
+    rows = []
+    for extra in ([], ["SWEETY"]):
+        for boost in (1.5, 2.5, 3.5):
+            for thr in (0.20, 0.12, 0.08, 0.05):
+                kw = f"{d}/keywords_try.txt"
+                open(kw, "w", encoding="utf-8").write("\n".join(keyword_lines(model_dir, PHRASES + extra, boost, thr)) + "\n")
+                kws = spotter(d, kw)
+                nat = hit = ph = phhit = false = 0
+                for want, robotic, phone, audio in clips:
+                    got = bool(detect(kws, audio))
+                    if want and not robotic:
+                        nat += 1; hit += got
+                        if phone: ph += 1; phhit += got
+                    if not want and got:
+                        false += 1
+                longf = len(detect(kws, neg)) if neg is not None else 0
+                rows.append((false + longf == 0, hit / nat, phhit / max(ph, 1), false, longf, boost, thr, "+SWEETY" if extra else ""))
+                print(f"boost {boost} threshold {thr} {'+SWEETY' if extra else '':8}: wake {hit}/{nat} ({hit / nat:.0%}), phone mic {phhit}/{ph}, "
+                      f"false on sentences {false}, false in chatter {longf}", flush=True)
+    rows.sort(key=lambda r: (r[0], r[1], r[2]), reverse=True)
+    b = rows[0]
+    print(f"BEST: boost {b[5]} threshold {b[6]} {b[7]}: wake {b[1]:.0%}, phone mic {b[2]:.0%}, false {b[3]}+{b[4]}")
 
 
 def detect(kws, audio):
@@ -117,5 +155,7 @@ def test(d, listfile, long_negative=None):
 if __name__ == "__main__":
     if sys.argv[1] == "prepare":
         prepare(sys.argv[2], sys.argv[3])
+    elif sys.argv[1] == "sweep":  # sweep <model_dir> <prepared_kws_dir> <list.tsv> [long_negative.wav]
+        sweep(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5] if len(sys.argv) > 5 else None)
     else:
         sys.exit(1 if test(sys.argv[2], sys.argv[3], sys.argv[4] if len(sys.argv) > 4 else None) else 0)

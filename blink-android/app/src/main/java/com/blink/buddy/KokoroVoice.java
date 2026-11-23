@@ -85,6 +85,7 @@ final class KokoroVoice {
             k.setTokens(new File(dir(), "tokens.txt").getAbsolutePath());
             k.setDataDir(new File(dir(), "espeak-ng-data").getAbsolutePath());
             k.setLengthScale(1.0f);
+            k.setLang("en-us"); // espeak-ng turns words into sounds for this Kokoro model
             OfflineTtsModelConfig m = new OfflineTtsModelConfig();
             m.setKokoro(k);
             m.setNumThreads(Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)));

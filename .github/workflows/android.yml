@@ -185,6 +185,7 @@ jobs:
           set -o pipefail
           curl -fsSL --retry 3 "$KWS_URL" | tar -xj -C "$RUNNER_TEMP"
           python test/kws.py prepare "$RUNNER_TEMP/$KWS_DIR" kws > /dev/null
+          python test/kws.py sweep "$RUNNER_TEMP/$KWS_DIR" kws speech/list.tsv speech/long_negative.wav 2>&1 | tee logs/6a-wakeword-sweep.log
           python test/kws.py test kws speech/list.tsv speech/long_negative.wav 2>&1 | tee logs/6-wakeword.log
 
       - name: Natural voice model (cached)
