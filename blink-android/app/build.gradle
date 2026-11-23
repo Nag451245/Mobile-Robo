@@ -63,7 +63,12 @@ android {
     }
 
     packaging {
-        jniLibs { useLegacyPackaging true }
+        jniLibs {
+            useLegacyPackaging true
+            // Only arm64 (phones) and x86_64 (CI emulator) are shipped; sherpa-onnx's 32-bit x86 build carries its own
+            // libonnxruntime.so, which would clash with onnxruntime-android's (Hey Sweety model).
+            excludes += ['lib/x86/**', 'lib/armeabi-v7a/**']
+        }
     }
 }
 
