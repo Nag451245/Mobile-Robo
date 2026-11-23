@@ -161,7 +161,8 @@ public class WakeService extends Service {
         if (!active) { state = "paused: screen is off or locked"; return false; }
         if (busy) { state = "thinking about what it heard…"; return false; }
         if (System.currentTimeMillis() <= holdUntil) { state = "paused while the talk window uses the mic"; return false; }
-        if (Assistant.get(this).talking()) { state = "paused while Sweety talks"; return false; }
+        // Don't listen to herself, except while recording the request after "Hey Sweety" (her chirp plays then).
+        if (!capturing && Assistant.get(this).talking()) { state = "paused while Sweety talks"; return false; }
         return true;
     }
 
@@ -200,7 +201,7 @@ public class WakeService extends Service {
                     Log.i(TAG, "detectors reloaded: " + wake.kind());
                 }
                 if (!shouldListen()) {
-                    if (ar != null) { Log.i(TAG, "mic closed: " + state); closeMic(ar); ar = null; wake.reset(); following = false; }
+                    if (ar != null) { Log.i(TAG, "mic closed: " + state); closeMic(ar); ar = null; wake.reset(); following = false; capturing = false; }
                     inSpeech = false; n = 0;
                     quietSince = System.currentTimeMillis();
                     Thread.sleep(250);
@@ -241,7 +242,7 @@ public class WakeService extends Service {
                     double bar = Math.max(0.006, noise * 2.6);
                     if (following) {
                         if (cardFirst && cardGone) { // the user closed the card: stop, and go back to waiting for "Hey Sweety"
-                            following = false; cardFirst = false; wake.reset();
+                            following = false; capturing = false; cardFirst = false; wake.reset();
                             Log.i(TAG, "card closed: stopped listening for the request");
                             continue;
                         }
@@ -254,7 +255,7 @@ public class WakeService extends Service {
                         boolean done = talking ? followSilentMs >= 800 || followN >= follow.length
                                                : now - followStart >= (cardFirst ? 5000 : 500);
                         if (done) {
-                            following = false;
+                            following = false; capturing = false;
                             busy = true;
                             closeMic(ar); ar = null; wake.reset();
                             final float[] request = talking ? java.util.Arrays.copyOf(follow, followN) : null;
@@ -271,7 +272,7 @@ public class WakeService extends Service {
                     if (word != null) {
                         Log.i(TAG, "wake word: " + word);
                         lastHeard = word.toLowerCase(Locale.ROOT);
-                        following = true; followStart = now; followSpeechMs = 0; followSilentMs = 0;
+                        following = true; capturing = true; followStart = now; followSpeechMs = 0; followSilentMs = 0;
                         // Like a real assistant: the card pops up right away while this same microphone keeps listening.
                         cardFirst = android.provider.Settings.canDrawOverlays(this);
                         if (cardFirst) { cardGone = false; main.post(this::openCardListening); }
@@ -467,6 +468,8 @@ public class WakeService extends Service {
 
     /** Set by the card when it's closed, so the request isn't recorded or delivered any more. */
     static volatile boolean cardGone;
+    /** Recording the request after "Hey Sweety": the mic stays open even while her chirp plays. */
+    private volatile boolean capturing;
 
     /** "Hey Sweety" heard: the card pops up showing "Listening…" (with a short chirp) while the mic keeps recording. */
     private void openCardListening() {
