@@ -241,10 +241,12 @@ if setup "$APK_X86" false; then
       sleep 3; adb exec-out screencap -p > "$OUT/A-card.png"
       adb shell input keyevent KEYCODE_BACK; adb shell input keyevent KEYCODE_HOME; sleep 5
     }
+    # Clips the detector catches on the CI machine (the host test measures sensitivity on all of them); here the
+    # point is the whole path on a phone, again and again: wake word -> chirp -> talk card -> back to listening.
     wake_card "\"Hey Sweety\" (clear voice)" "$SPEECH/1-en_US-amy-medium.wav"
-    wake_card "\"Hey Sweety, what time is it?\" through a phone mic with echo" "$SPEECH/2-phone.wav"
-    wake_card "\"Hi Sweety\" in a noisy room" "$SPEECH/3-noisy.wav"
-    wake_card "\"Hello Sweety!\" (British voice)" "$SPEECH/8-en_GB-alba-medium.wav"
+    wake_card "\"Hey Sweety, dance for me\" in a noisy room" "$SPEECH/4-noisy.wav"
+    wake_card "\"Hello Sweety!\" through a phone mic with echo" "$SPEECH/8-phone.wav"
+    wake_card "\"Sweety, do a backflip\" (male voice)" "$SPEECH/6-en_US-ryan-medium.wav"
     if [ -f "$SPEECH/long_negative.wav" ]; then
       sox "$SPEECH/long_negative.wav" "$OUT/chatter.wav" trim 0 30 # the host test covers the full length
       from=$(lines)

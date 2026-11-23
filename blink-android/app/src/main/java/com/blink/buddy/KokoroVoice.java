@@ -57,7 +57,9 @@ final class KokoroVoice {
 
     File dir() { return new File(app.getFilesDir(), "kokoro"); }
     private File model() { File f = new File(dir(), "model.int8.onnx"); return f.exists() ? f : new File(dir(), "model.onnx"); }
-    boolean downloaded() { return model().exists() && new File(dir(), "voices.bin").exists() && new File(dir(), "tokens.txt").exists() && new File(dir(), "espeak-ng-data").isDirectory(); }
+    /** The voice's pronunciation dictionary (sherpa-onnx 2 reads words from it; there is no espeak-ng any more). */
+    private File lexicon() { return new File(dir(), "lexicon-en-us.txt"); }
+    boolean downloaded() { return model().exists() && new File(dir(), "voices.bin").exists() && new File(dir(), "tokens.txt").exists() && lexicon().exists(); }
     boolean downloading() { return downloading; }
     boolean ready() { return tts != null; }
     boolean playing() { return playing; }
@@ -83,9 +85,11 @@ final class KokoroVoice {
             k.setModel(model().getAbsolutePath());
             k.setVoices(new File(dir(), "voices.bin").getAbsolutePath());
             k.setTokens(new File(dir(), "tokens.txt").getAbsolutePath());
-            k.setDataDir(new File(dir(), "espeak-ng-data").getAbsolutePath());
+            // Words become sounds through the dictionary, plus Sweety's own little one (her name, "or", "her"…).
+            File mine = new File(dir(), "sweety-words.txt");
+            try (FileOutputStream o = new FileOutputStream(mine)) { o.write(SpeakText.EXTRA_LEXICON.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+            k.setLexicon(lexicon().getAbsolutePath() + "," + mine.getAbsolutePath());
             k.setLengthScale(1.0f);
-            k.setLang("en-us"); // espeak-ng turns words into sounds for this Kokoro model
             OfflineTtsModelConfig m = new OfflineTtsModelConfig();
             m.setKokoro(k);
             m.setNumThreads(Math.max(2, Math.min(4, Runtime.getRuntime().availableProcessors() / 2)));
@@ -124,7 +128,8 @@ final class KokoroVoice {
                 if (tts == null) warm();
                 OfflineTts t = tts;
                 if (t == null) return;
-                for (String s : sentences(text)) {
+                // Numbers, times and symbols become words: the voice skips anything not in its dictionary.
+                for (String s : sentences(SpeakText.prepare(text))) {
                     if (gen != generation) return;
                     long t0 = System.currentTimeMillis();
                     GeneratedAudio a = t.generate(s, speakerId(), speed);

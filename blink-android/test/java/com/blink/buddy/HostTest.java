@@ -130,6 +130,51 @@ public class HostTest {
         check(woke, "wake-up lines for every time of day, e.g. \"" + DayTime.wokeLine(DayTime.MORNING, r) + "\" / \"" + DayTime.yesLine(r) + "\"");
     }
 
+    /**
+     * Everything she says, made ready for the natural voice, must be words the voice's dictionary knows, or Kokoro
+     * silently skips them.   java HostTest speakable lexicon-en-us.txt
+     */
+    static void speakable(String lexiconFile) throws Exception {
+        java.util.Set<String> lex = new java.util.HashSet<>();
+        java.util.List<String> entries = new java.util.ArrayList<>(Files.readAllLines(Paths.get(lexiconFile), java.nio.charset.StandardCharsets.UTF_8));
+        entries.addAll(java.util.Arrays.asList(SpeakText.EXTRA_LEXICON.split("\n"))); // her own word list, shipped next to it
+        for (String l : entries) {
+            int bar = l.indexOf(" || ");
+            if (bar > 0 && !l.startsWith("#")) lex.add(l.substring(0, bar).trim().toLowerCase());
+        }
+        java.util.List<String> said = new java.util.ArrayList<>(java.util.Arrays.asList(
+            "It's 7:30 PM!", "It's 11:05 AM.", "I set an alarm for 7 am.", "Alarm set for 6:45 a.m.", "It's 12:00.",
+            "7 plus 5 is 12! Easy peasy robot math.", "25 minus 30 is -5!", "1.5 plus 2 is 3.5!", "100 divided by 4 is 25!",
+            "Your battery is at 87%.", "It's 31°C outside.", "That costs ₹1,250.", "Okay! I'll remind you to drink water in 30 minutes.",
+            "Timer set for 5-10 minutes.", "The 21st of March, in 2026.", "Hi! I'm Sweety. *giggle*", "Beep… boop… zzz.",
+            "Sweety’s here! You’re the best.", "Call 9876543210?", "You asked: What's my name?"));
+        java.util.Random r = new java.util.Random(5);
+        for (String[] set : new String[][]{DayTime.GOOD_MORNING, DayTime.MORNING_TOO_LATE, DayTime.MORNING_AT_NIGHT, DayTime.GOOD_NIGHT,
+            DayTime.NIGHT_TOO_EARLY, DayTime.GOOD_AFTERNOON, DayTime.AFTERNOON_WRONG, DayTime.GOOD_EVENING, DayTime.EVENING_TOO_EARLY,
+            DayTime.GOOD_DAY, DayTime.HI_LATE, DayTime.HI_EARLY, DayTime.HI_MORNING, DayTime.HI_NOON, DayTime.HI_AFTERNOON,
+            DayTime.HI_EVENING, DayTime.HI_NIGHT}) for (String l : set) said.add(l.replace("{now}", DayTime.clock(1 + r.nextInt(12), r.nextInt(60))));
+        for (int p = 0; p < 7; p++) for (int i = 0; i < 12; i++) { said.add(DayTime.idleLine(p, r)); said.add(DayTime.wokeLine(p, r)); said.add(DayTime.yesLine(r)); }
+        for (int h = 0; h < 24; h++) said.add(DayTime.hourly(h, r)[0]);
+        for (String act : new String[]{"dance", "jump", "spin", "flip", "cartwheel"}) said.add(DayTime.lateTwist(act, r));
+        java.util.Map<String, String> oov = new java.util.TreeMap<>();
+        for (String line : new java.util.LinkedHashSet<>(said)) {
+            String ready = SpeakText.prepare(line);
+            for (String w : ready.split("[\\s…]+")) {
+                String k = w.toLowerCase().replaceAll("^[^\\p{L}\\p{N}']+|[^\\p{L}\\p{N}']+$", "");
+                if (k.isEmpty()) continue;
+                boolean ok = lex.contains(k);
+                if (!ok && k.contains("-")) { ok = true; for (String part : k.split("-")) ok &= part.isEmpty() || lex.contains(part); }
+                if (!ok) oov.putIfAbsent(k, line + "  ->  " + ready);
+            }
+        }
+        for (String s : new String[]{"It's 7:30 PM!", "25 minus 30 is -5!", "That costs ₹1,250.", "Hi! I'm Sweety. *giggle*", "Call 9876543210?"})
+            System.out.println("      " + s + "  ->  " + SpeakText.prepare(s));
+        check(oov.isEmpty(), new java.util.LinkedHashSet<>(said).size() + " lines she says are all words her natural voice can say"
+            + (oov.isEmpty() ? "" : "; missing from the dictionary: " + oov));
+        check(SpeakText.prepare("It's 7:30 PM!").equals("It's seven thirty pee em!"), "times are said the way people say them");
+        check(SpeakText.prepare("1,205").equals("one thousand two hundred five") && SpeakText.prepare("3.5").equals("three point five"), "numbers become words");
+    }
+
     static void check(boolean ok, String what) {
         if (!ok) fails++;
         System.out.println((ok ? "ok    " : "FAIL  ") + what);
@@ -237,6 +282,8 @@ public class HostTest {
         if (a.length > 0 && a[0].equals("tools")) { System.out.print(Call.TOOLS_JSON); return; }
         if (a.length > 1 && a[0].equals("gemini")) { gemini(a[1]); finish(); return; }
         if (a.length > 1 && a[0].equals("needle")) { needle(a[1]); finish(); return; }
+        if (a.length > 1 && a[0].equals("speakable")) { speakable(a[1]); finish(); return; }
+        if (a.length > 1 && a[0].equals("lexicon")) { Files.write(Paths.get(a[1]), SpeakText.EXTRA_LEXICON.getBytes(java.nio.charset.StandardCharsets.UTF_8)); return; }
         if (a.length > 0) { transcripts(a[0]); finish(); return; }
         wake("Hey Sweety.", "");
         wake("Hey, sweetie, set an alarm for 7 am.", "set an alarm for 7 am");
