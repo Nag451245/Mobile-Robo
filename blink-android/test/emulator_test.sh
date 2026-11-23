@@ -59,6 +59,12 @@ feed() { # play a recording into Sweety's listener (debug-build test hook)
   adb shell run-as $PKG cp /data/local/tmp/mic-test.pcm files/mic-test.pcm
 }
 
+caught() { # caught <phrase numbers...>: clearly spoken recordings of them that the host detector caught this run
+  local n v
+  for n in "$@"; do for v in en_US-amy-medium en_GB-alba-medium en_US-ryan-medium; do
+    { [ ! -f "$SPEECH/detected.txt" ] || grep -qx "$n-$v.wav" "$SPEECH/detected.txt"; } && echo "$SPEECH/$n-$v.wav"
+  done; done
+}
 setup() { # setup <apk> <wake true|false> [chat|nochat]: fresh install, with the chat brain in place unless "nochat"
   adb uninstall $PKG >/dev/null 2>&1
   adb install -r -g "$1" >/dev/null || return 1
@@ -243,12 +249,6 @@ elif setup "$APK_X86" false; then
     sleep 5
     if found "$G" "SweetyWake.*(listening with the wake-word detector|wake-word detector unavailable)" | grep -q "with the wake-word"; then pass "wake-word detector loaded"
     else fail "wake-word detector didn't load: $(found "$G" "SweetyWake" 3 | tr '\n' '|')"; fi
-    caught() { # caught <phrase numbers...>: clearly spoken recordings of them that the host detector caught this run
-      local n v
-      for n in "$@"; do for v in en_US-amy-medium en_GB-alba-medium en_US-ryan-medium; do
-        { [ ! -f "$SPEECH/detected.txt" ] || grep -qx "$n-$v.wav" "$SPEECH/detected.txt"; } && echo "$SPEECH/$n-$v.wav"
-      done; done
-    }
     wake_card() { # wake_card <label> <phrase numbers...>
       # This checks the path (wake word -> chirp -> card), not accuracy (the host test measures that on every
       # recording), so it uses recordings the same detector caught on the CI machine in this run, up to two tries:
@@ -320,9 +320,17 @@ elif [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
   # 120 s each: Whistle under ARM translation answers in well under a minute; a miss shouldn't cost 5 minutes.
   # Without "display over other apps" she answers "Yes?" and then listens (Whistle): a two-step flow. Words said in
   # the same breath as "Hey Sweety" are not kept on this path, so it is tested the way it works.
-  wake_case "two steps: \"Hey Sweety\"" "$SPEECH/1-en_GB-alba-medium.wav" "SweetyWake.*(wake word: |wake phrase found, rest: \"\")" 120 0
-  wake_case "two steps: then \"What time is it?\"" "$SPEECH/13-en_US-ryan-medium.wav" "Sweety .*reply \[.*\]: It's [0-9]" 120
-  wake_case "two steps, another voice: \"Hey Sweety\"" "$SPEECH/1-en_US-amy-medium.wav" "SweetyWake.*(wake word: |wake phrase found, rest: \"\")" 120 0
+  wake_step() { # wake_step <label>: "Hey Sweety" alone, from recordings the host detector caught, up to two tries
+    local from w; from=$(lines)
+    for w in $(caught 1 | head -2); do
+      feed "$w"
+      if wait_for "$from" "SweetyWake.*(wake word: |wake phrase found, rest: \"\")" 120; then pass "$1: $(found "$from" "SweetyWake.*(wake word: |wake phrase found)")"; return 0; fi
+    done
+    fail "$1: $(found "$from" "SweetyWake|Sweety " 8 | grep -v "mic: loudest" | tr '\n' '|')"
+  }
+  wake_step "two steps: \"Hey Sweety\""
+  wake_case "two steps: then \"What time is it?\"" "$SPEECH/13-en_US-ryan-medium.wav" "SweetyWake.*command: |Sweety .*reply \[" 120
+  wake_step "two steps, again: \"Hey Sweety\""
   # Whistle (offline hearing) sometimes mishears ("what term is it?"): here it's enough that she takes the request on.
   wake_case "two steps: then \"What time is it?\" (another voice)" "$SPEECH/13-en_US-amy-medium.wav" "SweetyWake.*command: |Sweety .*reply \[" 120
   for n in 9 11; do
