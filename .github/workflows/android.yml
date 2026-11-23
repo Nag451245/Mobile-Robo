@@ -9,7 +9,7 @@ name: Android live wallpaper (APK)
 on:
   push:
     branches: [main, 'test/**']
-    paths: ['blink-android/**', 'blink-mobile/src/**', 'blink-mobile/vendor/**', '.github/workflows/android.yml']
+    paths: ['blink-android/**', '!blink-android/wakeword/**', 'blink-mobile/src/**', 'blink-mobile/vendor/**', '.github/workflows/android.yml']
   workflow_dispatch:
 
 permissions:

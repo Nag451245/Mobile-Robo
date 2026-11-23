@@ -1,0 +1,72 @@
+name: Train the Hey Sweety wake word
+
+# Trains Sweety's own wake-word model (blink-android/wakeword/train.py) on synthetic voices and public speech, then
+# publishes it to the "hey-sweety-model" release, where the app build picks it up. Runs when the trainer changes.
+on:
+  push:
+    paths:
+      - blink-android/wakeword/**
+      - .github/workflows/wakeword.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wakeword-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Downloads (generator voice model, LibriSpeech, feature models), cached
+        uses: actions/cache@v4
+        with:
+          path: |
+            work/*.pt
+            work/*.tar.gz
+            work/*.onnx
+          key: wakeword-downloads-v1
+
+      - name: Install
+        run: |
+          pip install -q torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install -q piper-sample-generator==3.2.0 onnxruntime onnx scipy scikit-learn tqdm requests soundfile
+          df -h . | tail -1
+
+      - name: Train
+        run: python blink-android/wakeword/train.py --work work --out out 2>&1 | tee train.log
+
+      - name: Publish the model
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: hey-sweety-model
+          name: Hey Sweety wake-word model
+          prerelease: true
+          files: |
+            out/hey_sweety.onnx
+            out/metrics.json
+            out/report.txt
+            work/melspectrogram.onnx
+            work/embedding_model.onnx
+          body: |
+            Sweety's own "Hey Sweety" wake-word model, trained by `blink-android/wakeword/train.py` from commit ${{ github.sha }}.
+            `hey_sweety.onnx` takes 16 openWakeWord speech embeddings ([1,16,96]) and gives a 0-1 score; `metrics.json` holds the chosen threshold.
+            Feature models: openWakeWord's `melspectrogram.onnx` and `embedding_model.onnx` (Google speech_embedding, Apache-2.0).
+            Training data: piper-sample-generator (MIT) with its LibriTTS-R generator (CC BY 4.0), LibriSpeech (CC BY 4.0).
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wakeword-training
+          path: |
+            train.log
+            out/
