@@ -400,6 +400,57 @@ public class WakeService extends Service {
     private final WakeWord wake = new WakeWord();
     /** Set when Voice Match changes: the listener reloads its detectors. */
     static volatile boolean reloadDetectors;
+    /**
+     * "Hey Sweety" heard. Like Gemini's overlay, a small Sweety card pops up over whatever app is open and listens with
+     * the phone's own speech recogniser. Android lets Sweety open it from the background because she may draw over
+     * other apps; without that permission she answers "Yes?" and listens for the request herself.
+     */
+    private void onWakeWord(float[] request) {
+        Assistant a = Assistant.get(this);
+        Bus.sweety(null, "wave", "curious");
+        if (android.provider.Settings.canDrawOverlays(this)) {
+            try {
+                if (a.voiceOn()) Sounds.wake(DayTime.hour()); // the card waits for it to finish before listening
+                Intent card = new Intent(this, TalkActivity.class).putExtra(TalkActivity.EXTRA_WOKE, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+                String kept = request != null ? saveRequest(request) : null;
+                if (kept != null) card.putExtra(TalkActivity.EXTRA_REQUEST_AUDIO, kept); // she works it out instead of listening again
+                startActivity(card);
+                Log.i(TAG, "opened the talk card");
+                updateNote("Listening… say what you need.");
+                busy = false;
+                return;
+            } catch (Exception e) { Log.w(TAG, "could not open the talk card", e); }
+        }
+        if (request != null && a.localHearing()) { // said in one breath: Whistle works out the rest
+            heardRequest(request);
+            return;
+        }
+        String say = DayTime.yesLine(new java.util.Random());
+        Bus.sweety(say, "wave", "curious");
+        updateNote("Listening… " + say);
+        int ms = a.voiceOn() ? Sounds.wake(DayTime.hour()) : 0;
+        main.postDelayed(() -> a.speak(say), ms + 60);
+        awaitUntil = System.currentTimeMillis() + ms + 9000;
+        busy = false;
+    }
+
+    /** Without the card: the request kept from "Hey Sweety, ..." goes to Whistle, then straight to the brain. */
+    private void heardRequest(float[] request) {
+        Assistant a = Assistant.get(this);
+        float peak = 0;
+        for (float v : request) peak = Math.max(peak, Math.abs(v));
+        if (peak > 0 && peak < .5f) { float g = Math.min(8f, .9f / peak); for (int i = 0; i < request.length; i++) request[i] *= g; }
+        a.transcribe(request, text -> {
+            String t = text == null ? "" : text.trim();
+            Log.i(TAG, "Whistle heard: \"" + t + "\"");
+            if (t.isEmpty()) { onWakeWord(null); return; } // nothing usable: answer "Yes?" and listen
+            lastHeard = t;
+            String rest = WakePhrase.find(t); // the kept audio can start with the end of "Hey Sweety"
+            command(rest != null && !rest.isEmpty() ? rest : t);
+        });
+    }
+
     /** The kept request as 16-bit PCM in the app's cache, for the talk card. */
     private String saveRequest(float[] pcm) {
         try {
