@@ -191,6 +191,13 @@ public class WakeService extends Service {
         Log.i(TAG, kws ? "listening with the wake-word detector (" + wake.kind() + ")" : "wake-word detector unavailable (" + wake.failure + "), using Whistle");
         while (alive) {
             try {
+                if (reloadDetectors) {
+                    reloadDetectors = false;
+                    if (ar != null) { closeMic(ar); ar = null; }
+                    wake.unload();
+                    kws = wake.load(this);
+                    Log.i(TAG, "detectors reloaded: " + wake.kind());
+                }
                 if (!shouldListen()) {
                     if (ar != null) { Log.i(TAG, "mic closed: " + state); closeMic(ar); ar = null; wake.reset(); following = false; }
                     inSpeech = false; n = 0;
@@ -250,34 +257,7 @@ public class WakeService extends Service {
                     }
                     if (rms < bar) noise = noise * 0.97 + Math.min(rms, 0.03) * 0.03; // the room's quiet level
                     String word = wake.accept(fbuf, r);
-                    // Second listener: each short burst of speech also goes to Whistle, which catches "Hey Sweety" in
-                    // voices and accents the small detector misses (one at a time, only while the phone is unlocked).
-                    if (word == null && Assistant.get(this).localHearing()) {
-                        if (!inSpeech) {
-                            for (int i = 0; i < r; i++) { pre[preN % pre.length] = fbuf[i]; preN++; }
-                            if (rms > bar) {
-                                inSpeech = true; silentMs = 0; speechMs = 100; n = 0; speechStart = now;
-                                int have = Math.min(preN, pre.length);
-                                for (int i = 0; i < have; i++) clip[n++] = pre[(preN - have + i) % pre.length];
-                                preN = 0;
-                            }
-                        } else {
-                            for (int i = 0; i < r && n < clip.length; i++) clip[n++] = fbuf[i];
-                            if (rms > bar) { silentMs = 0; speechMs += 100; } else silentMs += 100;
-                            if (silentMs >= 600 || n >= clip.length) {
-                                inSpeech = false;
-                                if (speechMs >= 400 && !checkingWords) {
-                                    checkingWords = true;
-                                    final float[] said = Arrays.copyOf(clip, n);
-                                    final long at = speechStart;
-                                    main.post(() -> checkWords(said, at));
-                                }
-                                n = 0;
-                            }
-                        }
-                    }
                     if (word != null) {
-                        lastWakeAt = now; inSpeech = false; n = 0;
                         Log.i(TAG, "wake word: " + word);
                         lastHeard = word.toLowerCase(Locale.ROOT);
                         following = true; followStart = now; followSpeechMs = 0; followSilentMs = 0;
@@ -418,100 +398,8 @@ public class WakeService extends Service {
     }
 
     private final WakeWord wake = new WakeWord();
-    private static final java.util.regex.Pattern GREETING_START = java.util.regex.Pattern.compile(
-        "^\\W*(hey|hi|hello|hiya|okay|ok|hay|hei|ay|eh|his|hase|has|haze|hey's)\\b", java.util.regex.Pattern.CASE_INSENSITIVE);
-    private volatile boolean checkingWords; // Whistle is checking a burst of speech for "Hey Sweety"
-    private volatile long lastWakeAt;
-
-    /** The second listener: did Whistle hear "Hey Sweety" (and maybe the request) in this burst of speech? */
-    private void checkWords(float[] said, long began) {
-        Assistant a = Assistant.get(this);
-        float peak = 0;
-        for (float v : said) peak = Math.max(peak, Math.abs(v));
-        if (peak > 0 && peak < .5f) { float g = Math.min(8f, .9f / peak); for (int i = 0; i < said.length; i++) said[i] *= g; }
-        a.transcribe(said, text -> {
-            checkingWords = false;
-            String t = text == null ? "" : text.trim();
-            if (t.isEmpty() || busy || lastWakeAt >= began) return; // nothing, or the detector already woke her
-            String rest = WakePhrase.find(t);
-            // Stricter than after a wake: on all speech, only a phrase that starts with a greeting (or Whistle's usual
-            // garbles of one) counts, so "those sweaty socks" or "a sweet day" never wake her.
-            if (rest == null || !GREETING_START.matcher(t).find()) return;
-            lastHeard = t;
-            lastWakeAt = System.currentTimeMillis();
-            Log.i(TAG, "wake word: WHISTLE (heard \"" + t + "\")");
-            busy = true; // the listener closes the mic
-            String request = rest.trim();
-            if (request.split("\\s+").length >= 2 || request.length() > 6) wokeWithWords(request); // "Hey Sweety, what time is it?"
-            else onWakeWord(null);
-        });
-    }
-
-    /** Woken by Whistle with the request in the same breath: the card answers it (or, without the card, she does). */
-    private void wokeWithWords(String request) {
-        Log.i(TAG, "one breath: \"" + request + "\"");
-        if (android.provider.Settings.canDrawOverlays(this)) {
-            try {
-                startActivity(new Intent(this, TalkActivity.class).putExtra(TalkActivity.EXTRA_ASK, request)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
-                busy = false;
-                return;
-            } catch (Exception e) { Log.w(TAG, "could not open the talk card", e); }
-        }
-        command(request);
-    }
-
-    /**
-     * "Hey Sweety" heard. Like Gemini's overlay, a small Sweety card pops up over whatever app is open and listens with
-     * the phone's own speech recogniser. Android lets Sweety open it from the background because she may draw over
-     * other apps; without that permission she answers "Yes?" and listens for the request herself.
-     */
-    private void onWakeWord(float[] request) {
-        Assistant a = Assistant.get(this);
-        Bus.sweety(null, "wave", "curious");
-        if (android.provider.Settings.canDrawOverlays(this)) {
-            try {
-                if (a.voiceOn()) Sounds.wake(DayTime.hour()); // the card waits for it to finish before listening
-                Intent card = new Intent(this, TalkActivity.class).putExtra(TalkActivity.EXTRA_WOKE, true)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-                String kept = request != null ? saveRequest(request) : null;
-                if (kept != null) card.putExtra(TalkActivity.EXTRA_REQUEST_AUDIO, kept); // she works it out instead of listening again
-                startActivity(card);
-                Log.i(TAG, "opened the talk card");
-                updateNote("Listening… say what you need.");
-                busy = false;
-                return;
-            } catch (Exception e) { Log.w(TAG, "could not open the talk card", e); }
-        }
-        if (request != null && a.localHearing()) { // said in one breath: Whistle works out the rest
-            heardRequest(request);
-            return;
-        }
-        String say = DayTime.yesLine(new java.util.Random());
-        Bus.sweety(say, "wave", "curious");
-        updateNote("Listening… " + say);
-        int ms = a.voiceOn() ? Sounds.wake(DayTime.hour()) : 0;
-        main.postDelayed(() -> a.speak(say), ms + 60);
-        awaitUntil = System.currentTimeMillis() + ms + 9000;
-        busy = false;
-    }
-
-    /** Without the card: the request kept from "Hey Sweety, ..." goes to Whistle, then straight to the brain. */
-    private void heardRequest(float[] request) {
-        Assistant a = Assistant.get(this);
-        float peak = 0;
-        for (float v : request) peak = Math.max(peak, Math.abs(v));
-        if (peak > 0 && peak < .5f) { float g = Math.min(8f, .9f / peak); for (int i = 0; i < request.length; i++) request[i] *= g; }
-        a.transcribe(request, text -> {
-            String t = text == null ? "" : text.trim();
-            Log.i(TAG, "Whistle heard: \"" + t + "\"");
-            if (t.isEmpty()) { onWakeWord(null); return; } // nothing usable: answer "Yes?" and listen
-            lastHeard = t;
-            String rest = WakePhrase.find(t); // the kept audio can start with the end of "Hey Sweety"
-            command(rest != null && !rest.isEmpty() ? rest : t);
-        });
-    }
-
+    /** Set when Voice Match changes: the listener reloads its detectors. */
+    static volatile boolean reloadDetectors;
     /** The kept request as 16-bit PCM in the app's cache, for the talk card. */
     private String saveRequest(float[] pcm) {
         try {

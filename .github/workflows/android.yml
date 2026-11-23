@@ -74,22 +74,25 @@ jobs:
           python ../test/kws.py prepare "$RUNNER_TEMP/$KWS_DIR" src/main/assets/kws
           ls -la libs src/main/assets/kws
 
-      - name: Sweety's own "Hey Sweety" model (trained by wakeword.yml; the keyword spotter stays as a fallback)
+      - name: Speech features for Voice Match, and Sweety's own "Hey Sweety" model if it's good enough
         working-directory: blink-android/app
         run: |
           mkdir -p src/main/assets/wake
-          for f in hey_sweety.onnx metrics.json melspectrogram.onnx embedding_model.onnx; do
-            if ! curl -fsSL --retry 3 -o "src/main/assets/wake/$f" "$WAKE_MODEL_URL/$f"; then
-              echo "::warning::no trained Hey Sweety model yet ($f); the app uses the keyword spotter"
-              rm -rf src/main/assets/wake; break
-            fi
+          # The shared speech-feature models (openWakeWord / Google speech_embedding, Apache-2.0): always shipped,
+          # Voice Match runs on them. Published with the trained model by wakeword.yml.
+          for f in melspectrogram.onnx embedding_model.onnx; do
+            curl -fsSL --retry 3 -o "src/main/assets/wake/$f" "$WAKE_MODEL_URL/$f"
           done
-          # Ships only if its report says it's good enough (wakes on most clips, under 2 false wake-ups an hour)
-          if [ -f src/main/assets/wake/metrics.json ] && ! python ../wakeword/good_enough.py src/main/assets/wake/metrics.json; then
-            echo "::warning::the trained Hey Sweety model isn't good enough yet; the app keeps the keyword spotter"
-            rm -rf src/main/assets/wake
+          # The trained model ships only if its report says it's good enough (wakes on most clips, under 2 false
+          # wake-ups an hour); otherwise the keyword spotter is the general detector.
+          if curl -fsSL --retry 3 -o metrics.json "$WAKE_MODEL_URL/metrics.json" && python ../wakeword/good_enough.py metrics.json; then
+            mv metrics.json src/main/assets/wake/
+            curl -fsSL --retry 3 -o src/main/assets/wake/hey_sweety.onnx "$WAKE_MODEL_URL/hey_sweety.onnx"
+          else
+            echo "::warning::the trained Hey Sweety model isn't good enough yet; the app keeps the keyword spotter (plus Voice Match)"
+            rm -f metrics.json
           fi
-          ls -la src/main/assets/wake 2>/dev/null || true
+          ls -la src/main/assets/wake
 
       - name: Natural voice model (cached)
         id: kokoro

@@ -155,6 +155,18 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         wakeInfo = text("", 13, false);
         wakeInfo.setTextColor(0xFF2E7D5B);
         col.addView(wakeInfo);
+        // Voice Match, like Google's: a few recordings of the user saying "Hey Sweety", so she wakes for their voice
+        col.addView(text("Voice Match: say \"Hey Sweety\" " + VoiceMatch.SAMPLES + " times so Sweety learns your voice and wakes for you far more reliably. Your recordings stay on the phone.", 14, false));
+        vmStatus = text("", 13, false);
+        vmStatus.setTextColor(0xFF2E7D5B);
+        col.addView(vmStatus);
+        vmRecord = button("", true);
+        vmRecord.setOnClickListener(v -> recordVoiceSample());
+        col.addView(vmRecord, full(px(6)));
+        Button vmForget = button("Remove Voice Match", false);
+        vmForget.setOnClickListener(v -> { VoiceMatch.forget(this); vmSamples.clear(); WakeService.reloadDetectors = true; refreshVoiceMatch(); toast("Voice Match removed."); });
+        col.addView(vmForget, full(px(6)));
+        refreshVoiceMatch();
         col.addView(text("Like Gemini: make Sweety your phone's assistant, then hold the power or home button (or swipe up from a bottom corner) to call her from anywhere, even the lock screen.", 14, false));
         Button assistant = button("Make Sweety my assistant", false);
         assistant.setOnClickListener(v -> makeAssistant());
@@ -377,6 +389,97 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         } else {
             toast("Hey Sweety is on. Try: \"Hey Sweety, what time is it?\"");
         }
+    }
+
+    /* ------------------------------------------------------------ Voice Match */
+    private TextView vmStatus;
+    private Button vmRecord;
+    private final java.util.List<float[]> vmSamples = new java.util.ArrayList<>();
+    private volatile boolean vmBusy;
+
+    private void refreshVoiceMatch() {
+        if (vmStatus == null) return;
+        boolean on = VoiceMatch.enrolled(this);
+        if (vmBusy) return;
+        if (!vmSamples.isEmpty()) vmStatus.setText("Got " + vmSamples.size() + " of " + VoiceMatch.SAMPLES + ". Again, the same way you'd call her.");
+        else vmStatus.setText(on ? "Voice Match is on: Sweety knows your voice." : "Voice Match is off.");
+        vmRecord.setText(vmSamples.isEmpty() && on ? "Record my voice again"
+            : "Say \"Hey Sweety\" (" + (vmSamples.size() + 1) + " of " + VoiceMatch.SAMPLES + ")");
+    }
+
+    /** Records one "Hey Sweety" (up to 2.5 s); after the last one, builds the Voice Match from all of them. */
+    private void recordVoiceSample() {
+        if (vmBusy) return;
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, REQ_MIC);
+            return;
+        }
+        vmBusy = true;
+        vmStatus.setText("Listening… say \"Hey Sweety\" now");
+        vmRecord.setEnabled(false);
+        WakeService.hold(4000); // the hands-free listener lets go of the microphone meanwhile
+        new Thread(() -> {
+            float[] said = null;
+            android.media.AudioRecord ar = null;
+            try {
+                Thread.sleep(300);
+                int rate = 16000;
+                int min = android.media.AudioRecord.getMinBufferSize(rate, android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT);
+                // the same microphone setting as hands-free listening, so her templates sound like the real thing
+                ar = new android.media.AudioRecord(android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION, rate,
+                    android.media.AudioFormat.CHANNEL_IN_MONO, android.media.AudioFormat.ENCODING_PCM_16BIT, Math.max(min, rate));
+                short[] pcm = new short[rate * 5 / 2];
+                ar.startRecording();
+                int n = 0;
+                while (n < pcm.length) { int r = ar.read(pcm, n, Math.min(1600, pcm.length - n)); if (r <= 0) break; n += r; }
+                float[] f = new float[n];
+                for (int i = 0; i < n; i++) f[i] = pcm[i] / 32768f;
+                said = VoiceMatch.spoken(f);
+            } catch (Exception e) {
+                android.util.Log.w("SweetyWake", "Voice Match recording failed", e);
+            } finally {
+                if (ar != null) { try { ar.stop(); } catch (Exception ignored) { } ar.release(); }
+            }
+            final float[] got = said;
+            runOnUiThread(() -> {
+                vmBusy = false;
+                vmRecord.setEnabled(true);
+                if (got == null) { refreshVoiceMatch(); toast("I didn't catch a clear \"Hey Sweety\". Try again, a little closer."); return; }
+                vmSamples.add(got);
+                if (vmSamples.size() < VoiceMatch.SAMPLES) { refreshVoiceMatch(); return; }
+                buildVoiceMatch();
+            });
+        }, "sweety-voicematch-rec").start();
+    }
+
+    private void buildVoiceMatch() {
+        vmBusy = true;
+        vmStatus.setText("Learning your voice…");
+        vmRecord.setEnabled(false);
+        final java.util.List<float[]> samples = new java.util.ArrayList<>(vmSamples);
+        new Thread(() -> {
+            String problem = null;
+            try {
+                if (!WakeModel.featuresPresent(this)) throw new Exception("this build has no speech-feature models");
+                WakeModel features = new WakeModel();
+                features.load(this);
+                java.util.List<float[][]> ts = new java.util.ArrayList<>();
+                for (float[] s : samples) { float[][] t = VoiceMatch.template(features, s); if (t != null && t.length >= 3) ts.add(t); }
+                features.close();
+                if (ts.size() < 3) throw new Exception("the recordings were too short");
+                VoiceMatch.save(this, ts);
+                WakeService.reloadDetectors = true;
+                android.util.Log.i("SweetyWake", "Voice Match set up from " + ts.size() + " recordings");
+            } catch (Exception e) { problem = e.getMessage(); }
+            final String p = problem;
+            runOnUiThread(() -> {
+                vmBusy = false;
+                vmSamples.clear();
+                vmRecord.setEnabled(true);
+                refreshVoiceMatch();
+                toast(p == null ? "Done! Sweety knows your voice now." : "Voice Match didn't work: " + p + ". Try again.");
+            });
+        }, "sweety-voicematch-build").start();
     }
 
     private void refreshBrain() { if (brainLine != null) brainLine.setText(Assistant.get(this).brainStatus()); }

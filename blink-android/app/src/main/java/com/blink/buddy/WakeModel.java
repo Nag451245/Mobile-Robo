@@ -22,7 +22,8 @@ import ai.onnxruntime.OrtSession;
  */
 final class WakeModel {
     private static final String TAG = "SweetyWake";
-    static final String LABEL = "HEY_SWEETY";
+    static final String LABEL = "HEY_SWEETY", VOICE_LABEL = "VOICE_MATCH";
+    VoiceMatch voice; // the user's own "Hey Sweety" (VoiceMatch), checked on every embedding when set up
     private static final int CHUNK = 1280, CONTEXT = 480, MEL = 32, EMB = 96;
 
     private OrtEnvironment env;
@@ -37,9 +38,17 @@ final class WakeModel {
     private int cooldown;
     private float peak;
 
-    static boolean present(Context c) {
-        try { c.getAssets().open("wake/hey_sweety.onnx").close(); return true; } catch (Exception e) { return false; }
+    /** The trained "Hey Sweety" model ships only when it's good enough (see wakeword/good_enough.py). */
+    static boolean present(Context c) { return has(c, "wake/hey_sweety.onnx"); }
+
+    /** The shared speech-feature models (always shipped): enough for Voice Match on its own. */
+    static boolean featuresPresent(Context c) { return has(c, "wake/embedding_model.onnx") && has(c, "wake/melspectrogram.onnx"); }
+
+    private static boolean has(Context c, String name) {
+        try { c.getAssets().open(name).close(); return true; } catch (Exception e) { return false; }
     }
+
+    boolean hasHead() { return head != null; }
 
     boolean load(Context c) throws Exception {
         env = OrtEnvironment.getEnvironment();
@@ -47,16 +56,18 @@ final class WakeModel {
         o.setIntraOpNumThreads(1);
         mel = env.createSession(asset(c, "wake/melspectrogram.onnx"), o);
         emb = env.createSession(asset(c, "wake/embedding_model.onnx"), o);
-        head = env.createSession(asset(c, "wake/hey_sweety.onnx"), o);
         melIn = mel.getInputNames().iterator().next();
         embIn = emb.getInputNames().iterator().next();
-        headIn = head.getInputNames().iterator().next();
-        try {
-            String m = new String(asset(c, "wake/metrics.json"), "UTF-8");
-            threshold = (float) new org.json.JSONObject(m).getDouble("threshold");
-        } catch (Exception e) { Log.w(TAG, "no metrics.json, threshold " + threshold); }
+        if (present(c)) {
+            head = env.createSession(asset(c, "wake/hey_sweety.onnx"), o);
+            headIn = head.getInputNames().iterator().next();
+            try {
+                String m = new String(asset(c, "wake/metrics.json"), "UTF-8");
+                threshold = (float) new org.json.JSONObject(m).getDouble("threshold");
+            } catch (Exception e) { Log.w(TAG, "no metrics.json, threshold " + threshold); }
+            Log.i(TAG, "Hey Sweety model ready, threshold " + threshold);
+        }
         reset();
-        Log.i(TAG, "Hey Sweety model ready, threshold " + threshold);
         return true;
     }
 
@@ -71,6 +82,7 @@ final class WakeModel {
 
     /** Forget what was heard: like the trainer's start, 30 ms of silence and a mel buffer of ones. */
     void reset() {
+        if (voice != null) voice.reset();
         java.util.Arrays.fill(window, 0f);
         filled = 0;
         mels.clear();
@@ -82,13 +94,17 @@ final class WakeModel {
     /** Highest score since the last call (for the listener's 3-second status line). */
     float takePeak() { float p = peak; peak = 0; return p; }
 
-    /** Feeds 16 kHz mono audio (-1..1); returns LABEL when "Hey Sweety" just ended, else null. */
+    private boolean matched;                 // the last hit came from Voice Match
+    private java.util.List<float[]> collected; // set while embed() collects features
+
+    /** Feeds 16 kHz mono audio (-1..1); returns LABEL (or VOICE_LABEL) when "Hey Sweety" just ended, else null. */
     String accept(float[] pcm, int n) throws Exception {
         String hit = null;
         for (int i = 0; i < n; i++) {
             window[CONTEXT + filled++] = pcm[i] * 32768f; // the models expect 16-bit sample values
             if (filled == CHUNK) {
-                if (step()) hit = LABEL;
+                matched = false;
+                if (step()) hit = matched ? VOICE_LABEL : LABEL;
                 System.arraycopy(window, CHUNK, window, 0, CONTEXT); // keep the last 30 ms as the next context
                 filled = 0;
             }
@@ -118,8 +134,10 @@ final class WakeModel {
         }
         embs.add(e);
         if (embs.size() > 16) embs.poll();
+        if (collected != null) { collected.add(unit(e)); return false; } // enrollment: just the features
         if (cooldown > 0) cooldown--;
-        if (embs.size() < 16) return false;
+        if (voice != null && voice.accept(unit(e)) && cooldown == 0) { cooldown = 25; matched = true; return true; }
+        if (head == null || embs.size() < 16) return false;
         float[] h = new float[16 * EMB];
         k = 0;
         for (float[] v : embs) { System.arraycopy(v, 0, h, k, EMB); k += EMB; }
@@ -131,6 +149,23 @@ final class WakeModel {
         peak = Math.max(peak, score);
         if (score >= threshold && cooldown == 0) { cooldown = 25; return true; } // then 2 s of rest
         return false;
+    }
+
+    /** Speech embeddings (unit length, one per 80 ms) of a recording, exactly as when listening; for Voice Match. */
+    synchronized java.util.List<float[]> embed(float[] audio) throws Exception {
+        reset();
+        collected = new java.util.ArrayList<>();
+        try { accept(audio, audio.length); return collected; }
+        finally { collected = null; reset(); }
+    }
+
+    private static float[] unit(float[] e) {
+        double s = 0;
+        for (float v : e) s += v * v;
+        float n = (float) Math.max(1e-9, Math.sqrt(s));
+        float[] u = new float[e.length];
+        for (int i = 0; i < e.length; i++) u[i] = e[i] / n;
+        return u;
     }
 
     /** Any nested float array from onnxruntime, flattened in order. */
