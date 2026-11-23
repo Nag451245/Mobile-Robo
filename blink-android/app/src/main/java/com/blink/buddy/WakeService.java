@@ -187,6 +187,7 @@ public class WakeService extends Service {
         int followN = 0, followSpeechMs = 0, followSilentMs = 0;
         long followStart = 0;
         boolean following = false;
+        boolean cardFirst = false; // the card is already up, showing "Listening…", while this records the request
         boolean kws = wake.load(this);
         Log.i(TAG, kws ? "listening with the wake-word detector (" + wake.kind() + ")" : "wake-word detector unavailable (" + wake.failure + "), using Whistle");
         while (alive) {
@@ -239,19 +240,29 @@ public class WakeService extends Service {
                     for (int i = 0; i < r; i++) { fbuf[i] = buf[i] / 32768f; recent[(int) (recentN++ % recent.length)] = fbuf[i]; }
                     double bar = Math.max(0.006, noise * 2.6);
                     if (following) {
+                        if (cardFirst && cardGone) { // the user closed the card: stop, and go back to waiting for "Hey Sweety"
+                            following = false; cardFirst = false; wake.reset();
+                            Log.i(TAG, "card closed: stopped listening for the request");
+                            continue;
+                        }
+                        boolean chirp = Sounds.playing(); // her own short wake-up chirp doesn't count as the user talking
                         int k = Math.min(r, follow.length - followN);
                         System.arraycopy(fbuf, 0, follow, followN, k);
                         followN += k;
-                        if (rms > bar) { followSpeechMs += 100; followSilentMs = 0; } else followSilentMs += 100;
+                        if (rms > bar && !chirp) { followSpeechMs += 100; followSilentMs = 0; } else followSilentMs += 100;
                         boolean talking = followSpeechMs >= 300; // a real request, not the tail of "Sweety"
-                        boolean done = talking ? followSilentMs >= 700 || followN >= follow.length : now - followStart >= 500;
+                        boolean done = talking ? followSilentMs >= 800 || followN >= follow.length
+                                               : now - followStart >= (cardFirst ? 5000 : 500);
                         if (done) {
                             following = false;
                             busy = true;
                             closeMic(ar); ar = null; wake.reset();
                             final float[] request = talking ? java.util.Arrays.copyOf(follow, followN) : null;
+                            final boolean toCard = cardFirst;
+                            cardFirst = false;
                             if (request != null) Log.i(TAG, "one breath: kept " + (request.length * 1000 / RATE) + " ms of your request");
-                            main.post(() -> onWakeWord(request));
+                            if (toCard) main.post(() -> toCard(request));
+                            else main.post(() -> onWakeWord(request));
                         }
                         continue;
                     }
@@ -261,6 +272,9 @@ public class WakeService extends Service {
                         Log.i(TAG, "wake word: " + word);
                         lastHeard = word.toLowerCase(Locale.ROOT);
                         following = true; followStart = now; followSpeechMs = 0; followSilentMs = 0;
+                        // Like a real assistant: the card pops up right away while this same microphone keeps listening.
+                        cardFirst = android.provider.Settings.canDrawOverlays(this);
+                        if (cardFirst) { cardGone = false; main.post(this::openCardListening); }
                         int keep = (int) Math.min(recentN, recent.length);
                         for (int i = 0; i < keep; i++) follow[i] = recent[(int) ((recentN - keep + i) % recent.length)];
                         followN = keep;
@@ -449,6 +463,35 @@ public class WakeService extends Service {
             String rest = WakePhrase.find(t); // the kept audio can start with the end of "Hey Sweety"
             command(rest != null && !rest.isEmpty() ? rest : t);
         });
+    }
+
+    /** Set by the card when it's closed, so the request isn't recorded or delivered any more. */
+    static volatile boolean cardGone;
+
+    /** "Hey Sweety" heard: the card pops up showing "Listening…" (with a short chirp) while the mic keeps recording. */
+    private void openCardListening() {
+        Assistant a = Assistant.get(this);
+        Bus.sweety(null, "wave", "curious");
+        try {
+            if (a.voiceOn()) Sounds.wakeShort(DayTime.hour());
+            startActivity(new Intent(this, TalkActivity.class).putExtra(TalkActivity.EXTRA_WOKE, true)
+                .putExtra(TalkActivity.EXTRA_SERVICE_LISTENS, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
+            Log.i(TAG, "opened the talk card");
+            updateNote("Listening… say what you need.");
+        } catch (Exception e) { Log.w(TAG, "could not open the talk card", e); cardGone = true; }
+    }
+
+    /** The request recorded after "Hey Sweety" goes to the card (or nothing was said). */
+    private void toCard(float[] request) {
+        busy = false;
+        if (cardGone) return;
+        Intent i = new Intent(this, TalkActivity.class).putExtra(TalkActivity.EXTRA_WOKE, true)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+        String kept = request != null ? saveRequest(request) : null;
+        if (kept != null) i.putExtra(TalkActivity.EXTRA_REQUEST_AUDIO, kept);
+        else i.putExtra(TalkActivity.EXTRA_NOTHING_HEARD, true);
+        try { startActivity(i); } catch (Exception e) { Log.w(TAG, "could not reach the talk card", e); }
     }
 
     /** The kept request as 16-bit PCM in the app's cache, for the talk card. */

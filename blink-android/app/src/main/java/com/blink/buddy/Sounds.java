@@ -127,6 +127,18 @@ final class Sounds {
         return play(out);
     }
 
+    /**
+     * A short wake-up chirp (about a quarter of a second) for when she's listening at once: one soft bird call in the
+     * day, a gentle owl note at night. Quiet and short, so it doesn't cover the start of what you say.
+     */
+    static int wakeShort(int hour) {
+        float[] out = new float[RATE * 300 / 1000];
+        int part = DayTime.part(hour);
+        if (part == DayTime.LATE || part == DayTime.NIGHT) chirp(out, 0, 520, 470, 220, .22f, 0);
+        else { float p = .95f + RND.nextFloat() * .1f; chirp(out, 0, 2800 * p, 3600 * p, 110, .2f, 0); chirp(out, 130, 3200 * p, 4300 * p, 90, .18f, 0); }
+        return play(out);
+    }
+
     private static List<Seg> hello() {
         List<Seg> q = new ArrayList<>();
         float k = .94f + RND.nextFloat() * .12f; // a slightly different "bee-doo!" each time

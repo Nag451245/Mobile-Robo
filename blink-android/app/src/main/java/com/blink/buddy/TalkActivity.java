@@ -37,6 +37,10 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     static final String EXTRA_WOKE = "woke";
     /** Path of the request said in the same breath as "Hey Sweety" (16 kHz 16-bit PCM), kept by the wake listener. */
     static final String EXTRA_REQUEST_AUDIO = "requestAudio";
+    /** The wake listener is recording the request itself (one continuous listen): the card just shows "Listening…". */
+    static final String EXTRA_SERVICE_LISTENS = "serviceListens";
+    /** The wake listener heard nothing after "Hey Sweety". */
+    static final String EXTRA_NOTHING_HEARD = "nothingHeard";
     private boolean oneBreath; // working out a kept request; if that fails, she just listens
     private final Handler h = new Handler(Looper.getMainLooper());
     private Hearing ears;
@@ -122,6 +126,15 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
             if (assist && Assistant.get(this).voiceOn()) Sounds.wake(DayTime.hour());
             Bus.sweety(null, "wave", "curious");
             avatar.gesture("wave");
+            if (woke && i.getBooleanExtra(EXTRA_SERVICE_LISTENS, false)) { // the wake listener records the request
+                avatar.state("listening");
+                return;
+            }
+            if (woke && i.getBooleanExtra(EXTRA_NOTHING_HEARD, false)) {
+                status.setText("I'm here! Say \"Hey Sweety\" again, or tap Talk.");
+                avatar.state("idle");
+                return;
+            }
             float[] kept = woke ? keptRequest(i.getStringExtra(EXTRA_REQUEST_AUDIO)) : null;
             if (kept != null) { // "Hey Sweety, what time is it?" in one breath: no need to say it again
                 oneBreath = true;
@@ -239,6 +252,18 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
             if (c != null && c.moveToFirst()) return c.getString(0);
         } catch (Exception ignored) { }
         return null;
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        WakeService.cardGone = true; // closed or left: the wake listener stops recording a request for it
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        WakeService.cardGone = false;
     }
 
     @Override
