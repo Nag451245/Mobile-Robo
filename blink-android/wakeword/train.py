@@ -33,6 +33,7 @@ NEAR_MISSES = ["sweaty", "it was hot and sweaty", "those sweaty socks", "sweater
                "hey Suzy", "hey Sid", "OK computer", "hello city", "hi Steve", "hey Sweeney"]
 LIBRISPEECH = "https://www.openslr.org/resources/12/{}.tar.gz"
 GENERATOR = "https://github.com/rhasspy/piper-sample-generator/releases/download/v2.0.0/en_US-libritts_r-medium.pt"
+GENERATOR_CONFIG = "https://raw.githubusercontent.com/rhasspy/piper-sample-generator/v3.2.0/models/en_US-libritts_r-medium.pt.json"
 FEATURES = "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/{}.onnx"
 
 
@@ -247,6 +248,7 @@ def main():
     mel_s = ort.InferenceSession(mel, providers=["CPUExecutionProvider"])
     emb_s = ort.InferenceSession(emb, providers=["CPUExecutionProvider"])
     gen = fetch(GENERATOR, os.path.join(args.work, "generator.pt"))
+    fetch(GENERATOR_CONFIG, gen + ".json")  # the generator needs its config next to it
 
     log("synthetic speech")
     pos = generate(gen, POSITIVE, args.positives, os.path.join(args.work, "pos"), "p")
