@@ -274,13 +274,14 @@ elif setup "$APK_X86" false; then
     # The path must work again and again; the small detector may still miss one recording on the emulator.
     if [ "$CARDS" -ge 3 ]; then pass "\"Hey Sweety\" opened her card $CARDS of 4 times in a row"
     else fail "\"Hey Sweety\" opened her card only $CARDS of 4 times"; fi
-    # One breath: "Hey Sweety, what time is it?" without a pause. The request is kept and answered; no second listen.
+    # One breath: "Hey Sweety, what time is it?" without a pause: the rest is kept and handed to her card (this
+    # emulator has neither a working recogniser nor Whistle, so phase B checks that she understands it).
     from=$(lines); ok=0
     for w in $(caught 2 | head -2); do
       feed "$w"
-      if wait_for "$from" "SweetyWake.*one breath: kept" 90 && wait_for "$from" "Sweety .*reply \[" 120; then ok=1; break; fi
+      if wait_for "$from" "SweetyWake.*one breath: kept" 90 && wait_for "$from" "SweetyTalk.*working out the request said with Hey Sweety" 30; then ok=1; break; fi
     done
-    if [ $ok = 1 ]; then pass "one breath, \"Hey Sweety, what time is it?\": $(found "$from" "SweetyWake.*one breath") -> $(found "$from" "Sweety .*reply \[")"
+    if [ $ok = 1 ]; then pass "one breath, \"Hey Sweety, what time is it?\": $(found "$from" "SweetyWake.*one breath") -> handed to her card"
     else fail "one breath, \"Hey Sweety, what time is it?\": $(tail -n +"$from" "$LOG" | grep -E "Sweety(Wake|Talk|Ears)? *\(" | grep -v "mic: loudest" | head -14 | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"; fi
     adb shell input keyevent KEYCODE_BACK; adb shell input keyevent KEYCODE_HOME; sleep 5
     if [ -f "$SPEECH/long_negative.wav" ]; then
@@ -353,6 +354,16 @@ elif [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
   two_step "two steps again, another voice" "$SPEECH/13-en_US-amy-medium.wav" && ROUNDS=$((ROUNDS + 1))
   if [ "$ROUNDS" -ge 1 ]; then pass "\"Hey Sweety\" then a request worked $ROUNDS of 2 times on the phone build"
   else fail "\"Hey Sweety\" then a request never worked on the phone build"; fi
+  # One breath on the phone build (no card here): the request said with "Hey Sweety" is kept, Whistle works it out,
+  # and she acts on it without asking "Yes?" first.
+  from=$(lines); ok=0
+  for w in $(caught 2 | head -3); do
+    feed "$w"
+    if wait_for "$from" "SweetyWake.*one breath: kept" 90 && wait_for "$from" "SweetyWake.*command: " 120; then ok=1; break; fi
+  done
+  if [ $ok = 1 ]; then pass "one breath on the phone build: $(found "$from" "SweetyWake.*(one breath|Whistle heard)" 2 | tr '\n' ' ')"
+  else fail "one breath on the phone build: $(found "$from" "SweetyWake|Sweety " 10 | grep -v "mic: loudest" | tr '\n' '|')"; fi
+  sleep 6
   for n in 9 11; do
     from=$(lines)
     feed "$SPEECH/$n-en_US-amy-medium.wav"

@@ -132,9 +132,12 @@ final class Ears implements RecognitionListener {
     @Override
     public void onResults(Bundle results) {
         done();
+        Runnable orElse = audioFallback;
         audioFallback = null;
         ArrayList<String> list = results != null ? results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) : null;
-        if (list == null || list.isEmpty() || list.get(0).trim().isEmpty()) cb.onProblem("I didn't catch that. Try again?");
+        boolean empty = list == null || list.isEmpty() || list.get(0).trim().isEmpty();
+        if (empty && orElse != null) { Log.i("SweetyEars", "the phone recogniser made nothing of the kept request; Whistle takes it"); orElse.run(); return; }
+        if (empty) cb.onProblem("I didn't catch that. Try again?");
         else { Log.i("SweetyEars", "heard: \"" + list.get(0) + "\""); cb.onHeard(list.get(0)); }
     }
 
