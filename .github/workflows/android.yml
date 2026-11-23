@@ -237,6 +237,7 @@ jobs:
           path: |
             blink-android/speech/*.wav
             blink-android/speech/list.tsv
+            blink-android/speech/detected.txt
 
       - name: Build the Cactus test program (Linux build of the same runtime)
         id: harness

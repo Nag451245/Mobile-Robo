@@ -243,27 +243,33 @@ elif setup "$APK_X86" false; then
     sleep 5
     if found "$G" "SweetyWake.*(listening with the wake-word detector|wake-word detector unavailable)" | grep -q "with the wake-word"; then pass "wake-word detector loaded"
     else fail "wake-word detector didn't load: $(found "$G" "SweetyWake" 3 | tr '\n' '|')"; fi
-    wake_card() { # wake_card <label> <wav> [another recording of the same phrase]
-      # This checks the path (wake word -> chirp -> card), not accuracy (the host test measures that), so a phrase
-      # gets a second recording: the CI's voices are randomised each run and the small detector misses some.
-      local from ok=0 w; from=$(lines)
-      for w in "$2" "${3:-}"; do
-        [ -n "$w" ] || continue
+    caught() { # caught <phrase numbers...>: clearly spoken recordings of them that the host detector caught this run
+      local n v
+      for n in "$@"; do for v in en_US-amy-medium en_GB-alba-medium en_US-ryan-medium; do
+        { [ ! -f "$SPEECH/detected.txt" ] || grep -qx "$n-$v.wav" "$SPEECH/detected.txt"; } && echo "$SPEECH/$n-$v.wav"
+      done; done
+    }
+    wake_card() { # wake_card <label> <phrase numbers...>
+      # This checks the path (wake word -> chirp -> card), not accuracy (the host test measures that on every
+      # recording), so it uses recordings the same detector caught on the CI machine in this run, up to two tries:
+      # the CI's voices are randomised each run and the small detector misses some.
+      local from ok=0 w label=$1; shift; from=$(lines)
+      for w in $(caught "$@" | head -2); do
         feed "$w"
         # 150 s: on the Android 11 emulator her natural voice takes ~50 s a sentence, and she doesn't listen while talking
         if wait_for "$from" "SweetyTalk.*listening \(Hey Sweety\)" 150; then ok=1; break; fi
       done
-      if [ $ok = 1 ]; then pass "$1: $(found "$from" "SweetyWake.*wake word") -> talk card opened"
-      else fail "$1: $(tail -n +"$from" "$LOG" | grep -E "Sweety(Wake|Talk|Ears|Local|Voice|Avatar)? *\(" | grep -v "mic: loudest" | head -16 | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"; fi
+      if [ $ok = 1 ]; then pass "$label: $(found "$from" "SweetyWake.*wake word") -> talk card opened"
+      else fail "$label: $(tail -n +"$from" "$LOG" | grep -E "Sweety(Wake|Talk|Ears|Local|Voice|Avatar)? *\(" | grep -v "mic: loudest" | head -16 | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"; fi
       sleep 3; adb exec-out screencap -p > "$OUT/A-card.png"
       adb shell input keyevent KEYCODE_BACK; adb shell input keyevent KEYCODE_HOME; sleep 5
     }
     # Clearly spoken clips (the host test measures sensitivity on all of them, noisy ones too); here the
     # point is the whole path on a phone, again and again: wake word -> chirp -> talk card -> back to listening.
-    wake_card "\"Hey Sweety\" (clear voice)" "$SPEECH/1-en_US-amy-medium.wav" "$SPEECH/1-en_GB-alba-medium.wav"
-    wake_card "\"Hey Sweety, dance for me\"" "$SPEECH/4-en_GB-alba-medium.wav" "$SPEECH/4-en_US-amy-medium.wav"
-    wake_card "\"Okay Sweety\" (or \"Hello Sweety\")" "$SPEECH/5-en_US-amy-medium.wav" "$SPEECH/8-en_GB-alba-medium.wav"
-    wake_card "\"Hey Sweety, turn on the torch\"" "$SPEECH/7-en_GB-alba-medium.wav" "$SPEECH/7-en_US-ryan-medium.wav"
+    wake_card "\"Hey Sweety\"" 1
+    wake_card "\"Hey Sweety, dance for me\"" 4
+    wake_card "\"Okay Sweety\" or \"Hello Sweety\"" 5 8
+    wake_card "\"Hey Sweety, turn on the torch\"" 7 2
     if [ -f "$SPEECH/long_negative.wav" ]; then
       sox "$SPEECH/long_negative.wav" "$OUT/chatter.wav" trim 0 30 # the host test covers the full length
       from=$(lines)

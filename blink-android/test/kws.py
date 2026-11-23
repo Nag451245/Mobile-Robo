@@ -123,6 +123,7 @@ def detect(kws, audio):
 def test(d, listfile, long_negative=None):
     kws = spotter(d)
     wakes = ok = false = hwakes = hok = 0
+    caught = []  # wake clips the detector caught: the emulator test picks its recordings from these
     for line in open(listfile, encoding="utf-8"):
         parts = line.rstrip("\n").split("\t")
         if len(parts) < 2:
@@ -148,6 +149,10 @@ def test(d, listfile, long_negative=None):
             false += 1
         mark = "ok    " if good else ("miss  " if want and (robotic or hard) else "MISS  " if want else "FALSE ")
         print(f"{mark}{path}  -> {got or '(nothing)'}")
+        if want and got:
+            caught.append(os.path.basename(path))
+    with open(os.path.join(os.path.dirname(listfile), "detected.txt"), "w", encoding="utf-8") as f:
+        f.write("\n".join(caught) + "\n")
     rate = ok / wakes if wakes else 0
     print(f"through a phone mic or in a noisy room (reported, the small detector's weak spot): {hok} of {hwakes} ({hok / max(hwakes, 1):.0%})")
     print(f"wake word: {ok} of {wakes} clearly spoken 'Hey Sweety' clips detected ({rate:.0%}, need {NEED:.0%}); "
