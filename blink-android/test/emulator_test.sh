@@ -254,7 +254,7 @@ elif setup "$APK_X86" false; then
         if wait_for "$from" "SweetyTalk.*listening \(Hey Sweety\)" 150; then ok=1; break; fi
       done
       if [ $ok = 1 ]; then pass "$1: $(found "$from" "SweetyWake.*wake word") -> talk card opened"
-      else fail "$1: $(found "$from" "SweetyWake|SweetyTalk" 4 | grep -v "mic: loudest" | tr '\n' '|')"; fi
+      else fail "$1: $(tail -n +"$from" "$LOG" | grep -E "Sweety(Wake|Talk|Ears|Local|Voice|Avatar)? *\(" | grep -v "mic: loudest" | head -16 | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"; fi
       sleep 3; adb exec-out screencap -p > "$OUT/A-card.png"
       adb shell input keyevent KEYCODE_BACK; adb shell input keyevent KEYCODE_HOME; sleep 5
     }

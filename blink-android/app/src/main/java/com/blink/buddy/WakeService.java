@@ -184,7 +184,7 @@ public class WakeService extends Service {
         while (alive) {
             try {
                 if (!shouldListen()) {
-                    if (ar != null) { closeMic(ar); ar = null; wake.reset(); }
+                    if (ar != null) { Log.i(TAG, "mic closed: " + state); closeMic(ar); ar = null; wake.reset(); }
                     inSpeech = false; n = 0;
                     quietSince = System.currentTimeMillis();
                     Thread.sleep(250);
@@ -195,6 +195,7 @@ public class WakeService extends Service {
                 if (ar == null) {
                     ar = openMic();
                     if (ar == null) { state = "microphone busy or blocked, retrying…"; Thread.sleep(3000); continue; }
+                    Log.i(TAG, "mic open" + (kws && awaitUntil == 0 ? ", listening for the wake word" : ", listening for a request"));
                 }
                 if (!inSpeech) state = (awaitUntil > 0 ? "listening for your request…" : "listening for \"Hey Sweety\"…") + levelText();
                 int r = ar.read(buf, 0, buf.length);
