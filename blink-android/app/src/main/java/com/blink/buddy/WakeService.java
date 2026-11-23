@@ -349,11 +349,10 @@ public class WakeService extends Service {
             Log.i(TAG, "wake phrase found, rest: \"" + rest + "\"");
             if (rest.split("\\s+").length >= 2 || rest.length() > 6) { command(rest); return; }
             // Just "Hey Sweety": answer and listen for the command.
-            String[] hi = {"Yes?", "I'm here!", "Hi! What's up?", "Yes, sweetie?"};
-            String say = hi[(int) (System.nanoTime() % hi.length + hi.length) % hi.length];
+            String say = DayTime.yesLine(new java.util.Random());
             Bus.sweety(say, "wave", "curious");
             updateNote("Listening… " + say);
-            int ms = a.voiceOn() ? Sounds.play("hello") : 0;
+            int ms = a.voiceOn() ? Sounds.wake(DayTime.hour()) : 0;
             main.postDelayed(() -> a.speak(say), ms + 60);
             awaitUntil = System.currentTimeMillis() + ms + 9000; // her "Yes?" plus 8 s to ask
             busy = false;
@@ -372,7 +371,7 @@ public class WakeService extends Service {
         Bus.sweety(null, "wave", "curious");
         if (android.provider.Settings.canDrawOverlays(this)) {
             try {
-                if (a.voiceOn()) Sounds.play("hello");
+                if (a.voiceOn()) Sounds.wake(DayTime.hour()); // the card waits for it to finish before listening
                 startActivity(new Intent(this, TalkActivity.class).putExtra(TalkActivity.EXTRA_WOKE, true)
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
                 Log.i(TAG, "opened the talk card");
@@ -381,11 +380,10 @@ public class WakeService extends Service {
                 return;
             } catch (Exception e) { Log.w(TAG, "could not open the talk card", e); }
         }
-        String[] hi = {"Yes?", "I'm here!", "Hi! What's up?", "Yes, sweetie?"};
-        String say = hi[(int) (System.nanoTime() % hi.length + hi.length) % hi.length];
+        String say = DayTime.yesLine(new java.util.Random());
         Bus.sweety(say, "wave", "curious");
         updateNote("Listening… " + say);
-        int ms = a.voiceOn() ? Sounds.play("hello") : 0;
+        int ms = a.voiceOn() ? Sounds.wake(DayTime.hour()) : 0;
         main.postDelayed(() -> a.speak(say), ms + 60);
         awaitUntil = System.currentTimeMillis() + ms + 9000;
         busy = false;

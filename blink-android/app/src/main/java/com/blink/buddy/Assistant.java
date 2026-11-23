@@ -68,6 +68,12 @@ final class Assistant {
     private Assistant(Context app) {
         this.app = app;
         this.prefs = app.getSharedPreferences("blink", Context.MODE_PRIVATE);
+        // Which greetings and lines she has used lately, kept across restarts so she doesn't repeat herself.
+        final SharedPreferences said = app.getSharedPreferences("said", Context.MODE_PRIVATE);
+        Fresh.store = new Fresh.Store() {
+            @Override public String get(String k) { return said.getString(k, null); }
+            @Override public void put(String k, String v) { said.edit().putString(k, v).apply(); }
+        };
         this.chatBrain = new ChatBrain(app);
         tts = new TextToSpeech(app, status -> {
             ttsReady = status == TextToSpeech.SUCCESS;

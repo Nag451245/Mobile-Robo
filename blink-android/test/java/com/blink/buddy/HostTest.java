@@ -68,7 +68,7 @@ public class HostTest {
         greet("Good morning", 15, 0, "laugh", "already|sleepyhead");
         greet("Good night", 22, 30, "sleep", "dream|night|sleep");
         greet("good night", 14, 0, "laugh", "nap|only");
-        greet("Hi", 2, 5, "wave", "awake");
+        greet("Hi", 2, 5, "wave", "awake|late");
         greet("Hey Sweety!", 12, 30, "wave", "lunch");
         greet("Hello there", 19, 0, "wave", "evening");
         greet("Hi, set an alarm for 7", 9, 0, null, "");
@@ -81,6 +81,53 @@ public class HostTest {
         String tw = DayTime.lateTwist("dance", r);
         if (tw == null) fails++;
         System.out.println((tw != null ? "ok    " : "FAIL  ") + "midnight dance: " + tw);
+        freshLines();
+    }
+
+    /** No repeats: a whole set is used before any line comes back, never the same line twice in a row; every greeting fits its time. */
+    static void freshLines() {
+        java.util.Random r = new java.util.Random(3);
+        final java.util.Map<String, String> mem = new java.util.HashMap<>(); // start from a clean memory
+        Fresh.store = new Fresh.Store() { public String get(String k) { return mem.get(k); } public void put(String k, String v) { mem.put(k, v); } };
+        String[] pool = {"a", "b", "c", "d", "e", "f", "g"};
+        boolean ok = true;
+        String prev = null;
+        for (int round = 0; round < 30; round++) {
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            for (int i = 0; i < pool.length; i++) {
+                String s = Fresh.pick("test", pool, r);
+                ok &= seen.add(s) && !s.equals(prev);
+                prev = s;
+            }
+        }
+        check(ok, "lines never repeat until the whole set is used, and never twice in a row (30 rounds of 7)");
+        String[] two = {"x", "y"};
+        boolean alt = true; prev = null;
+        for (int i = 0; i < 40; i++) { String s = Fresh.pick("two", two, r); alt &= !s.equals(prev); prev = s; }
+        check(alt, "even a set of two lines alternates");
+
+        // 20 greetings in a row at 8:15 AM: all different, all about the morning
+        java.util.Set<String> mornings = new java.util.HashSet<>();
+        for (int i = 0; i < DayTime.GOOD_MORNING.length; i++) mornings.add(DayTime.greet("good morning", 8, 15, r)[0]);
+        check(mornings.size() == DayTime.GOOD_MORNING.length, mornings.size() + " different good-morning replies in " + DayTime.GOOD_MORNING.length + " tries");
+
+        // every line keeps the word its moment needs (the emulator test and the tone depend on it)
+        Object[][] sets = {
+            {DayTime.GOOD_MORNING, "morning"}, {DayTime.MORNING_TOO_LATE, "already|sleepyhead"}, {DayTime.MORNING_AT_NIGHT, "night|silly"},
+            {DayTime.GOOD_NIGHT, "dream|night"}, {DayTime.NIGHT_TOO_EARLY, "nap|only"}, {DayTime.GOOD_AFTERNOON, "afternoon"},
+            {DayTime.GOOD_EVENING, "evening"}, {DayTime.HI_LATE, "awake|late"}, {DayTime.HI_NOON, "lunch"}, {DayTime.HI_EVENING, "evening"}};
+        for (Object[] s : sets) {
+            String[] lines = (String[]) s[0];
+            java.util.List<String> bad = new java.util.ArrayList<>();
+            for (String l : lines) if (!l.toLowerCase().matches("(?s).*(" + s[1] + ").*")) bad.add(l);
+            check(bad.isEmpty() && new java.util.HashSet<>(java.util.Arrays.asList(lines)).size() == lines.length,
+                lines.length + " lines about \"" + s[1] + "\", no duplicates" + (bad.isEmpty() ? "" : "; off: " + bad));
+        }
+        String late = DayTime.greet("hi", 1, 30, r)[0];
+        check(late.contains("1:30 AM") || !late.contains("{now}"), "the time is filled in: " + late);
+        boolean woke = true;
+        for (int p = 0; p < 7; p++) for (int i = 0; i < 12; i++) woke &= DayTime.wokeLine(p, r) != null && !DayTime.yesLine(r).isEmpty();
+        check(woke, "wake-up lines for every time of day, e.g. \"" + DayTime.wokeLine(DayTime.MORNING, r) + "\" / \"" + DayTime.yesLine(r) + "\"");
     }
 
     static void check(boolean ok, String what) {

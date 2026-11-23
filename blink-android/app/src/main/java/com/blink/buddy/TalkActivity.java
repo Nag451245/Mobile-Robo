@@ -38,6 +38,7 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     private final Handler h = new Handler(Looper.getMainLooper());
     private Hearing ears;
     private TextView status, heard;
+    private String wokeLine; // her "I'm awake" line, kept on the card through her first listen
     private TextView mic;
     private Assistant.NumberCallback contactCb;
     private float dp;
@@ -110,8 +111,16 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
         boolean woke = i.getBooleanExtra(EXTRA_WOKE, false);
         boolean assist = Intent.ACTION_ASSIST.equals(i.getAction()) || Intent.ACTION_VOICE_COMMAND.equals(i.getAction());
         android.util.Log.i("SweetyTalk", "listening (" + (woke ? "Hey Sweety" : assist ? "assistant button" : "tap") + ")");
-        if (woke) { Bus.sweety(null, "wave", "curious"); h.postDelayed(this::startListening, 450); } // let her chirp finish first
-        else startListening();
+        if (woke || assist) {
+            // Woken: a fresh line for the time of day, and (for the button) her wake-up sound. Listening starts once
+            // the sound has finished, so the speech recogniser doesn't hear the birds.
+            wokeLine = DayTime.wokeLine(DayTime.now(), new java.util.Random());
+            status.setText(wokeLine); // stays up while she listens
+            if (assist && Assistant.get(this).voiceOn()) Sounds.wake(DayTime.hour());
+            Bus.sweety(null, "wave", "curious");
+            avatar.gesture("wave");
+            h.postDelayed(this::startListening, Math.max(300, Sounds.remainingMs()));
+        } else startListening();
     }
 
     private int px(float v) { return Math.round(v * dp); }
@@ -142,7 +151,7 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     /* Ears.Callback */
     @Override public void onListening(boolean on) {
         mic.setText(on ? "Stop" : "Talk");
-        if (on) { status.setText("Listening…"); Bus.sweety(null, null, "curious"); avatar.state("listening"); }
+        if (on) { if (wokeLine == null) status.setText("Listening…"); wokeLine = null; Bus.sweety(null, null, "curious"); avatar.state("listening"); }
     }
     @Override public void onPartial(String text) { heard.setText(text + "…"); }
     @Override public void onHeard(String text) { ask(text); }
