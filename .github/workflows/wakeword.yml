@@ -39,11 +39,20 @@ jobs:
       - name: Install
         run: |
           pip install -q torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          pip install -q piper-sample-generator==3.2.0 onnxruntime onnx scipy scikit-learn tqdm requests soundfile
+          # The PyPI package lacks piper_train (needed by the .pt voice generator), so it comes from the tagged source.
+          git clone -q --depth 1 --branch v3.2.0 https://github.com/rhasspy/piper-sample-generator.git "$RUNNER_TEMP/psg"
+          pip install -q "$RUNNER_TEMP/psg" pytorch-lightning onnxruntime onnx scipy scikit-learn tqdm requests soundfile
+          echo "PYTHONPATH=$RUNNER_TEMP/psg" >> "$GITHUB_ENV"
           df -h . | tail -1
 
       - name: Train
-        run: python blink-android/wakeword/train.py --work work --out out 2>&1 | tee train.log
+        run: |
+          set -o pipefail
+          if ! python blink-android/wakeword/train.py --work work --out out 2>&1 | tee train.log; then
+            tail -n 60 train.log > fail.txt
+            bash blink-android/test/annotate.sh error "training failed: end of train.log" fail.txt 6000
+            exit 1
+          fi
 
       - name: Publish the model
         uses: softprops/action-gh-release@v2
