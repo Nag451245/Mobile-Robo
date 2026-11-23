@@ -193,8 +193,16 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
             if (k.length() < 20) { toast("That doesn't look like a Gemini key."); return; }
             prefs.edit().putString("gemini_key", k).putString("gemini_model", "").apply();
             keyBox.setText(""); keyBox.setHint("Key saved ✓ (paste a new one to change it)");
-            toast("Saved! Ask Sweety anything.");
-            ask("Hi Sweety, are you there?");
+            // Check it straight away with a real question to Gemini, and say plainly whether it works.
+            toast("Saved! Checking it with Gemini…");
+            new Thread(() -> {
+                String problem = Assistant.get(this).gemini().check();
+                runOnUiThread(() -> {
+                    refreshBrain();
+                    if (problem == null) { toast("Gemini works! Ask Sweety anything."); ask("What can you do for me, Sweety?"); }
+                    else toast("Saved, but Gemini didn't answer: " + problem);
+                });
+            }, "sweety-gemini-check").start();
         });
         col.addView(saveKey, full(px(8)));
         Button getKey = button("Get a free key (Google AI Studio)", false);

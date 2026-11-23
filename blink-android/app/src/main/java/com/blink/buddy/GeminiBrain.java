@@ -113,16 +113,18 @@ final class GeminiBrain {
         if (System.currentTimeMillis() - lastTurn > 30 * 60_000L) history.clear(); // a new chat after a long pause
         try {
             String model = model();
-            boolean thinkingOff = !"no".equals(store.get("gemini_thinking_off", "yes"));
-            String[] res = post("/v1beta/models/" + model + ":generateContent", request(text, Calendar.getInstance(), memory, thinkingOff).toString());
-            if (res[0].equals("400") && thinkingOff && res[1].toLowerCase(Locale.ROOT).contains("thinking")) {
-                store.put("gemini_thinking_off", "no"); // this model doesn't take that setting
-                res = post("/v1beta/models/" + model + ":generateContent", request(text, Calendar.getInstance(), memory, false).toString());
-            }
-            if (res[0].equals("404")) { // that model is gone: pick again
-                store.put("gemini_model", "");
-                model = model();
-                res = post("/v1beta/models/" + model + ":generateContent", request(text, Calendar.getInstance(), memory, false).toString());
+            String[] res = generate(model, text, memory);
+            // The chosen model can fail for this key (not on the free tier, retired, overloaded) while others work:
+            // try the other Flash models it lists and Google's stable ones, and keep the first that answers.
+            if (!res[0].equals("200") && !keyRejected(res)) {
+                String first = describe(res);
+                for (String other : candidates()) {
+                    if (other.equals(model)) continue;
+                    String[] r2 = generate(other, text, memory);
+                    if (r2[0].equals("200")) { store.put("gemini_model", other); model = other; res = r2; break; }
+                    if (keyRejected(r2)) { res = r2; break; }
+                }
+                if (!res[0].equals("200")) { lastError = keyRejected(res) ? describe(res) : first; return null; }
             }
             if (!res[0].equals("200")) { lastError = describe(res); return null; }
             Answer a = parse(new JSONObject(res[1]));
@@ -133,6 +135,68 @@ final class GeminiBrain {
             lastError = "can't reach Gemini (" + e.getClass().getSimpleName() + ")";
             return null;
         }
+    }
+
+    /** One generateContent call; turns "thinking off" off for models that don't take it. */
+    private String[] generate(String model, String text, List<String> memory) throws Exception {
+        boolean thinkingOff = !"no".equals(store.get("gemini_thinking_off", "yes"));
+        String[] res = post("/v1beta/models/" + model + ":generateContent", request(text, Calendar.getInstance(), memory, thinkingOff).toString());
+        if (res[0].equals("400") && thinkingOff && res[1].toLowerCase(Locale.ROOT).contains("thinking")) {
+            store.put("gemini_thinking_off", "no"); // this model doesn't take that setting
+            res = post("/v1beta/models/" + model + ":generateContent", request(text, Calendar.getInstance(), memory, false).toString());
+        }
+        return res;
+    }
+
+    private static boolean keyRejected(String[] res) {
+        if (!res[0].equals("400") && !res[0].equals("401") && !res[0].equals("403")) return false;
+        String m = res[1].toLowerCase(Locale.ROOT);
+        return m.contains("api key") || m.contains("api_key") || m.contains("unauthenticated") || res[0].equals("401");
+    }
+
+    /** Models to try: the Flash models this key lists (newest first), then Google's stable names. */
+    List<String> candidates() {
+        java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
+        try {
+            String[] res = get("/v1beta/models?pageSize=200");
+            if (res[0].equals("200")) out.addAll(flashModels(new JSONObject(res[1]).optJSONArray("models")));
+        } catch (Exception ignored) { }
+        out.add("gemini-flash-latest");
+        out.add(FALLBACK_MODEL);
+        out.add("gemini-2.0-flash");
+        return new java.util.ArrayList<>(out).subList(0, Math.min(6, out.size()));
+    }
+
+    /** Plain Flash models (no lite, image, tts, live or preview), newest version first. */
+    static List<String> flashModels(JSONArray models) {
+        List<String> names = new java.util.ArrayList<>();
+        if (models == null) return names;
+        for (int i = 0; i < models.length(); i++) {
+            JSONObject o = models.optJSONObject(i);
+            if (o == null) continue;
+            String name = o.optString("name", "").replaceFirst("^models/", "");
+            JSONArray methods = o.optJSONArray("supportedGenerationMethods");
+            if (methods == null || !methods.toString().contains("generateContent")) continue;
+            if (name.matches("gemini-[0-9.]+-flash(-[0-9]+)?")) names.add(name);
+        }
+        names.sort((a, b) -> Double.compare(version(b), version(a)) != 0 ? Double.compare(version(b), version(a)) : a.length() - b.length());
+        return names;
+    }
+
+    private static double version(String name) {
+        Matcher v = Pattern.compile("gemini-([0-9.]+)-flash").matcher(name);
+        if (!v.find()) return -1;
+        try { return Double.parseDouble(v.group(1).replaceAll("^(\\d+\\.\\d+).*", "$1")); } catch (Exception e) { return -1; }
+    }
+
+    /**
+     * Checks the key right away (the Save key button): a tiny question to Gemini. Returns null when it works (the
+     * model is then remembered), else what went wrong in plain words. Blocking: call off the main thread.
+     */
+    String check() {
+        Answer a = ask("Say hi in three words.", null);
+        if (a != null) { history.clear(); return null; }
+        return lastError;
     }
 
     private static String describe(String[] res) {

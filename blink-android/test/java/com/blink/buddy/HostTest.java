@@ -190,9 +190,13 @@ public class HostTest {
         kv.put("gemini_key", "test-key");
         GeminiBrain g = new GeminiBrain(st, base);
         java.util.List<String> memory = new java.util.ArrayList<>();
-        check("gemini-3.8-flash".equals(g.model()), "picks the newest plain Flash model: " + g.model());
+        check("gemini-4.0-flash".equals(g.model()), "picks the newest plain Flash model first: " + g.model());
 
         GeminiBrain.Answer a = g.ask("Why is the sky blue?", memory);
+        // gemini-4.0-flash isn't on this key's free tier (429, limit 0): she must move on to a model that answers
+        check(a != null && "gemini-3.8-flash".equals(kv.get("gemini_model")), "the newest model isn't on the free tier, so she switches to one that works: "
+            + kv.get("gemini_model") + (a == null ? " (" + g.lastError + ")" : ""));
+        check(g.check() == null && "gemini-3.8-flash".equals(kv.get("gemini_model")), "the Save key check says Gemini works");
         check(a != null && a.text.startsWith("Sunlight") && a.gesture.equals("nod") && a.emotion.equals("happy") && a.calls.isEmpty(),
             "answers a question with words, gesture and mood: " + (a == null ? g.lastError : "[" + a.gesture + "/" + a.emotion + "] " + a.text));
 

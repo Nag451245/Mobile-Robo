@@ -10,6 +10,8 @@ os.makedirs(LOG, exist_ok=True)
 
 MODELS = {"models": [
     {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
+    # the newest model, but not on this (free) key: like a real key that can't use Google's latest model yet
+    {"name": "models/gemini-4.0-flash", "supportedGenerationMethods": ["generateContent"]},
     {"name": "models/gemini-3.8-flash", "supportedGenerationMethods": ["generateContent", "countTokens"]},
     {"name": "models/gemini-3.8-flash-lite", "supportedGenerationMethods": ["generateContent"]},
     {"name": "models/gemini-3.8-flash-image", "supportedGenerationMethods": ["generateContent"]},
@@ -76,6 +78,10 @@ class H(BaseHTTPRequestHandler):
         body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
         with open(f"{LOG}/requests.jsonl", "a") as f:
             f.write(json.dumps({"path": self.path, "body": body}) + "\n")
+        if "gemini-4.0-flash:generateContent" in self.path:
+            self.send(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED",
+                                      "message": "Quota exceeded for metric: generate_content_free_tier_requests, limit: 0"}})
+            return
         if "gemini-3.8-flash:generateContent" not in self.path:
             self.send(404, {"error": {"message": f"model {self.path} not found"}})
             return
