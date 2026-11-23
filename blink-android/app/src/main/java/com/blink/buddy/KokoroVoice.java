@@ -129,6 +129,7 @@ final class KokoroVoice {
                     long t0 = System.currentTimeMillis();
                     GeneratedAudio a = t.generate(s, speakerId(), speed);
                     float[] pcm = a.getSamples();
+                    if (pcm == null || pcm.length == 0 || a.getSampleRate() <= 0) { Log.w(TAG, "no audio for: " + s); continue; }
                     Log.i(TAG, "spoke " + (pcm.length * 1000L / a.getSampleRate()) + " ms of audio, made in " + (System.currentTimeMillis() - t0) + " ms");
                     if (gen != generation) return;
                     play(pcm, a.getSampleRate(), gen);

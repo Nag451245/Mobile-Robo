@@ -187,7 +187,7 @@ if setup "$APK_X86" false; then
     gem "Why is the sky blue?" "Sunlight" "answers questions with Gemini"
     gem "Remind me to drink water when I get home" "remind you to drink water in 30 minutes" "Gemini turns a request into a phone action"
     gem "My name is Alex" "Nice to meet you" "tells her something about you"
-    gem "What's my name?" "Alex" "remembers it later"
+    gem "What is my name?" "Alex" "remembers it later"
     if [ -n "$MOCKLOG" ] && [ -f "$MOCKLOG/requests.jsonl" ]; then
       grep -q "set_alarm" "$MOCKLOG/requests.jsonl" && grep -q "Right now it is" "$MOCKLOG/requests.jsonl" \
         && pass "Gemini is told her phone actions and the time" || fail "requests to Gemini are missing the actions or the time"
@@ -267,6 +267,8 @@ if [[ "$abis" == *arm64-v8a* ]] && setup "$APK_ARM" true; then
   adb exec-out screencap -p > "$OUT/B-app.png"
   adb shell dumpsys activity services $PKG | grep -q WakeService && pass "Hey Sweety listener is running" || fail "Hey Sweety listener did not start"
 
+  # Without "display over other apps" she can't pop up her card, so she answers "Yes?" and listens herself (Whistle).
+  adb shell appops set $PKG SYSTEM_ALERT_WINDOW deny
   adb shell input keyevent KEYCODE_HOME
   sleep 6
   adb exec-out screencap -p > "$OUT/B-home.png"
