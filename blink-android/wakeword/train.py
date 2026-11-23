@@ -176,8 +176,8 @@ def build_model(torch):
     nn = torch.nn
     return nn.Sequential(
         nn.Flatten(),
-        nn.Linear(16 * 96, 64), nn.LayerNorm(64), nn.ReLU(), nn.Dropout(0.2),
-        nn.Linear(64, 64), nn.LayerNorm(64), nn.ReLU(), nn.Dropout(0.2),
+        nn.Linear(16 * 96, 128), nn.LayerNorm(128), nn.ReLU(), nn.Dropout(0.2),
+        nn.Linear(128, 64), nn.LayerNorm(64), nn.ReLU(), nn.Dropout(0.2),
         nn.Linear(64, 1), nn.Sigmoid())
 
 
@@ -404,12 +404,16 @@ def main():
         model.eval()
 
     train(args.steps)
-    # Second pass: everyday speech the model still scores above 0.1 is shown far more often.
-    with torch.no_grad():
-        sc = torch.cat([model(Xbig_t[i:i + 8192].float()).squeeze(1) for i in range(0, len(Xbig_t), 8192)])
-    hard = Xbig_t[sc > 0.1].float()
-    log(f"hard negatives: {len(hard)} of {len(Xbig_t)} everyday-speech windows still score above 0.1")
-    train(args.steps // 2, hard)
+    # Then rounds on the everyday speech the model still scores above 0.1: each round shows it far more often,
+    # keeping what earlier rounds found, so the confusing bits of ordinary speech are learned as "not her name".
+    hard = None
+    for rnd in range(3):
+        with torch.no_grad():
+            sc = torch.cat([model(Xbig_t[i:i + 8192].float()).squeeze(1) for i in range(0, len(Xbig_t), 8192)])
+        new = Xbig_t[sc > 0.1].float()
+        hard = new if hard is None else torch.cat([hard, new])
+        log(f"hard negatives, round {rnd + 1}: {len(new)} of {len(Xbig_t)} everyday-speech windows still score above 0.1")
+        train(args.steps // 2, hard)
 
     model.eval()
     onnx_path = os.path.join(args.out, "hey_sweety.onnx")
@@ -423,7 +427,7 @@ def main():
     with torch.no_grad():
         vp = model(torch.from_numpy(Vp)).squeeze(1).numpy(); vn = model(torch.from_numpy(Vn)).squeeze(1).numpy()
     rows = []
-    for thr in (0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9):
+    for thr in (0.3, 0.5, 0.7, 0.8, 0.9, 0.95, 0.98, 0.99):
         rows.append({"threshold": thr, "wake_held_out": float((vp >= thr).mean()), "near_miss_woken": float((vn >= thr).mean()),
                      "false_wakes_per_hour": count_wakes(sc_test, thr) / hours})
     # The threshold: the most sensitive one with at most 0.5 false wake-ups an hour of everyday speech.
