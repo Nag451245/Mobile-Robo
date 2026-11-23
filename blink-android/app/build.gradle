@@ -73,4 +73,6 @@ dependencies {
     // sherpa-onnx (Apache-2.0): the "Hey Sweety" wake-word detector and her natural Kokoro voice.
     // CI downloads the release AAR into app/libs (see .github/workflows/android.yml).
     implementation files('libs/sherpa-onnx.aar')
+    // Runs Sweety's own "Hey Sweety" model (assets/wake/, see wakeword/train.py)
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:1.20.0'
 }

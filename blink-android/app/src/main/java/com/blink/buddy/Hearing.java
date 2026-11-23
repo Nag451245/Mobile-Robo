@@ -35,6 +35,11 @@ final class Hearing {
         if (wakeWasOn) h.postDelayed(go, 250); else go.run(); // give the wake listener a moment to close the mic
     }
 
+    /** The rest of "Hey Sweety, ..." said in one breath: the phone's recogniser if it can take a recording, else Whistle. */
+    void recognize(float[] pcm) {
+        if (!phone.recognizeAudio(pcm, () -> local.transcribe(pcm))) local.transcribe(pcm);
+    }
+
     boolean listening() { return phone.listening() || local.listening(); }
 
     void stop() { phone.stop(); local.stop(); WakeService.hold(2500); }

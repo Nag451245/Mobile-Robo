@@ -179,12 +179,20 @@ public class WakeService extends Service {
         long statSince = System.currentTimeMillis(), zeroSince = 0;
         double maxRms = 0;
         float[] fbuf = new float[FRAME];
+        // One breath ("Hey Sweety, what time is it?"): after the wake word the mic stays open a moment, and if you
+        // keep talking, the rest is kept and handed over, instead of being lost while the card opens.
+        float[] recent = new float[RATE * 3 / 10]; // the last 300 ms: a request can start before the detector fires
+        long recentN = 0;
+        float[] follow = new float[RATE * 8];
+        int followN = 0, followSpeechMs = 0, followSilentMs = 0;
+        long followStart = 0;
+        boolean following = false;
         boolean kws = wake.load(this);
-        Log.i(TAG, kws ? "listening with the wake-word detector" : "wake-word detector unavailable (" + wake.failure + "), using Whistle");
+        Log.i(TAG, kws ? "listening with the wake-word detector (" + wake.kind() + ")" : "wake-word detector unavailable (" + wake.failure + "), using Whistle");
         while (alive) {
             try {
                 if (!shouldListen()) {
-                    if (ar != null) { Log.i(TAG, "mic closed: " + state); closeMic(ar); ar = null; wake.reset(); }
+                    if (ar != null) { Log.i(TAG, "mic closed: " + state); closeMic(ar); ar = null; wake.reset(); following = false; }
                     inSpeech = false; n = 0;
                     quietSince = System.currentTimeMillis();
                     Thread.sleep(250);
@@ -209,7 +217,9 @@ public class WakeService extends Service {
                 maxRms = Math.max(maxRms, rms);
                 if (now - statSince >= 3000) {
                     level = maxRms;
-                    Log.i(TAG, String.format(Locale.ROOT, "mic: loudest %.4f, room noise %.4f, bar %.4f", maxRms, noise, Math.max(0.005, noise * 2.6)));
+                    float wp = wake.takePeak();
+                    Log.i(TAG, String.format(Locale.ROOT, "mic: loudest %.4f, room noise %.4f, bar %.4f", maxRms, noise, Math.max(0.005, noise * 2.6))
+                        + (wp >= 0 ? String.format(Locale.ROOT, ", Hey Sweety score up to %.2f", wp) : ""));
                     statSince = now; maxRms = 0;
                 }
                 if (zeroSince > 0 && now - zeroSince > 3000) {
@@ -219,14 +229,34 @@ public class WakeService extends Service {
                 }
                 // The wake-word detector listens to everything and only reacts to "Hey Sweety".
                 if (kws && awaitUntil == 0) {
-                    for (int i = 0; i < r; i++) fbuf[i] = buf[i] / 32768f;
+                    for (int i = 0; i < r; i++) { fbuf[i] = buf[i] / 32768f; recent[(int) (recentN++ % recent.length)] = fbuf[i]; }
+                    double bar = Math.max(0.006, noise * 2.6);
+                    if (following) {
+                        int k = Math.min(r, follow.length - followN);
+                        System.arraycopy(fbuf, 0, follow, followN, k);
+                        followN += k;
+                        if (rms > bar) { followSpeechMs += 100; followSilentMs = 0; } else followSilentMs += 100;
+                        boolean talking = followSpeechMs >= 300; // a real request, not the tail of "Sweety"
+                        boolean done = talking ? followSilentMs >= 700 || followN >= follow.length : now - followStart >= 500;
+                        if (done) {
+                            following = false;
+                            busy = true;
+                            closeMic(ar); ar = null; wake.reset();
+                            final float[] request = talking ? java.util.Arrays.copyOf(follow, followN) : null;
+                            if (request != null) Log.i(TAG, "one breath: kept " + (request.length * 1000 / RATE) + " ms of your request");
+                            main.post(() -> onWakeWord(request));
+                        }
+                        continue;
+                    }
+                    if (rms < bar) noise = noise * 0.97 + Math.min(rms, 0.03) * 0.03; // the room's quiet level
                     String word = wake.accept(fbuf, r);
                     if (word != null) {
                         Log.i(TAG, "wake word: " + word);
                         lastHeard = word.toLowerCase(Locale.ROOT);
-                        busy = true;
-                        closeMic(ar); ar = null; wake.reset();
-                        main.post(this::onWakeWord);
+                        following = true; followStart = now; followSpeechMs = 0; followSilentMs = 0;
+                        int keep = (int) Math.min(recentN, recent.length);
+                        for (int i = 0; i < keep; i++) follow[i] = recent[(int) ((recentN - keep + i) % recent.length)];
+                        followN = keep;
                     }
                     continue;
                 }
@@ -367,19 +397,26 @@ public class WakeService extends Service {
      * the phone's own speech recogniser. Android lets Sweety open it from the background because she may draw over
      * other apps; without that permission she answers "Yes?" and listens for the request herself.
      */
-    private void onWakeWord() {
+    private void onWakeWord(float[] request) {
         Assistant a = Assistant.get(this);
         Bus.sweety(null, "wave", "curious");
         if (android.provider.Settings.canDrawOverlays(this)) {
             try {
                 if (a.voiceOn()) Sounds.wake(DayTime.hour()); // the card waits for it to finish before listening
-                startActivity(new Intent(this, TalkActivity.class).putExtra(TalkActivity.EXTRA_WOKE, true)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION));
+                Intent card = new Intent(this, TalkActivity.class).putExtra(TalkActivity.EXTRA_WOKE, true)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+                String kept = request != null ? saveRequest(request) : null;
+                if (kept != null) card.putExtra(TalkActivity.EXTRA_REQUEST_AUDIO, kept); // she works it out instead of listening again
+                startActivity(card);
                 Log.i(TAG, "opened the talk card");
                 updateNote("Listening… say what you need.");
                 busy = false;
                 return;
             } catch (Exception e) { Log.w(TAG, "could not open the talk card", e); }
+        }
+        if (request != null && a.localHearing()) { // said in one breath: Whistle works out the rest
+            heardRequest(request);
+            return;
         }
         String say = DayTime.yesLine(new java.util.Random());
         Bus.sweety(say, "wave", "curious");
@@ -388,6 +425,33 @@ public class WakeService extends Service {
         main.postDelayed(() -> a.speak(say), ms + 60);
         awaitUntil = System.currentTimeMillis() + ms + 9000;
         busy = false;
+    }
+
+    /** Without the card: the request kept from "Hey Sweety, ..." goes to Whistle, then straight to the brain. */
+    private void heardRequest(float[] request) {
+        Assistant a = Assistant.get(this);
+        float peak = 0;
+        for (float v : request) peak = Math.max(peak, Math.abs(v));
+        if (peak > 0 && peak < .5f) { float g = Math.min(8f, .9f / peak); for (int i = 0; i < request.length; i++) request[i] *= g; }
+        a.transcribe(request, text -> {
+            String t = text == null ? "" : text.trim();
+            Log.i(TAG, "Whistle heard: \"" + t + "\"");
+            if (t.isEmpty()) { onWakeWord(null); return; } // nothing usable: answer "Yes?" and listen
+            lastHeard = t;
+            String rest = WakePhrase.find(t); // the kept audio can start with the end of "Hey Sweety"
+            command(rest != null && !rest.isEmpty() ? rest : t);
+        });
+    }
+
+    /** The kept request as 16-bit PCM in the app's cache, for the talk card. */
+    private String saveRequest(float[] pcm) {
+        try {
+            java.io.File f = new java.io.File(getCacheDir(), "request.pcm");
+            byte[] b = new byte[pcm.length * 2];
+            for (int k = 0; k < pcm.length; k++) { int v = Math.max(-32768, Math.min(32767, Math.round(pcm[k] * 32767))); b[2 * k] = (byte) v; b[2 * k + 1] = (byte) (v >> 8); }
+            try (java.io.FileOutputStream o = new java.io.FileOutputStream(f)) { o.write(b); }
+            return f.getAbsolutePath();
+        } catch (Exception e) { Log.w(TAG, "couldn't keep the request", e); return null; }
     }
 
     private static String shorten(String t) { return t.length() > 60 ? t.substring(0, 60) + "…" : t; }

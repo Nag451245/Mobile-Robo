@@ -274,6 +274,15 @@ elif setup "$APK_X86" false; then
     # The path must work again and again; the small detector may still miss one recording on the emulator.
     if [ "$CARDS" -ge 3 ]; then pass "\"Hey Sweety\" opened her card $CARDS of 4 times in a row"
     else fail "\"Hey Sweety\" opened her card only $CARDS of 4 times"; fi
+    # One breath: "Hey Sweety, what time is it?" without a pause. The request is kept and answered; no second listen.
+    from=$(lines); ok=0
+    for w in $(caught 2 | head -2); do
+      feed "$w"
+      if wait_for "$from" "SweetyWake.*one breath: kept" 90 && wait_for "$from" "Sweety .*reply \[" 120; then ok=1; break; fi
+    done
+    if [ $ok = 1 ]; then pass "one breath, \"Hey Sweety, what time is it?\": $(found "$from" "SweetyWake.*one breath") -> $(found "$from" "Sweety .*reply \[")"
+    else fail "one breath, \"Hey Sweety, what time is it?\": $(tail -n +"$from" "$LOG" | grep -E "Sweety(Wake|Talk|Ears)? *\(" | grep -v "mic: loudest" | head -14 | sed -E 's/^.{0,40}\): //' | tr '\n' '|')"; fi
+    adb shell input keyevent KEYCODE_BACK; adb shell input keyevent KEYCODE_HOME; sleep 5
     if [ -f "$SPEECH/long_negative.wav" ]; then
       sox "$SPEECH/long_negative.wav" "$OUT/chatter.wav" trim 0 30 # the host test covers the full length
       from=$(lines)

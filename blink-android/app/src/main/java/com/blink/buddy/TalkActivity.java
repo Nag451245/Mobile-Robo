@@ -35,6 +35,9 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     static final String EXTRA_ASK = "ask";
     /** Opened because the wake-word detector heard "Hey Sweety". */
     static final String EXTRA_WOKE = "woke";
+    /** Path of the request said in the same breath as "Hey Sweety" (16 kHz 16-bit PCM), kept by the wake listener. */
+    static final String EXTRA_REQUEST_AUDIO = "requestAudio";
+    private boolean oneBreath; // working out a kept request; if that fails, she just listens
     private final Handler h = new Handler(Looper.getMainLooper());
     private Hearing ears;
     private TextView status, heard;
@@ -119,7 +122,14 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
             if (assist && Assistant.get(this).voiceOn()) Sounds.wake(DayTime.hour());
             Bus.sweety(null, "wave", "curious");
             avatar.gesture("wave");
-            h.postDelayed(this::startListening, Math.max(300, Sounds.remainingMs()));
+            float[] kept = woke ? keptRequest(i.getStringExtra(EXTRA_REQUEST_AUDIO)) : null;
+            if (kept != null) { // "Hey Sweety, what time is it?" in one breath: no need to say it again
+                oneBreath = true;
+                status.setText("…");
+                android.util.Log.i("SweetyTalk", "working out the request said with Hey Sweety (" + (kept.length / 16) + " ms)");
+                avatar.state("thinking");
+                ears.recognize(kept);
+            } else h.postDelayed(this::startListening, Math.max(300, Sounds.remainingMs()));
         } else startListening();
     }
 
@@ -154,8 +164,31 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
         if (on) { if (wokeLine == null) status.setText("Listening…"); wokeLine = null; Bus.sweety(null, null, "curious"); avatar.state("listening"); }
     }
     @Override public void onPartial(String text) { heard.setText(text + "…"); }
-    @Override public void onHeard(String text) { ask(text); }
-    @Override public void onProblem(String message) { status.setText(message); avatar.state("idle"); avatar.mood("curious", 2.5f); }
+    @Override public void onHeard(String text) {
+        if (oneBreath) { // the kept audio can start with the end of "Hey Sweety"
+            oneBreath = false;
+            String rest = WakePhrase.find(text);
+            if (rest != null && !rest.trim().isEmpty()) text = rest;
+        }
+        ask(text);
+    }
+    @Override public void onProblem(String message) {
+        if (oneBreath) { oneBreath = false; startListening(); return; } // couldn't make out the kept request: listen instead
+        status.setText(message); avatar.state("idle"); avatar.mood("curious", 2.5f);
+    }
+
+    /** Reads the kept request (16-bit PCM) and deletes it. */
+    private static float[] keptRequest(String path) {
+        if (path == null) return null;
+        java.io.File f = new java.io.File(path);
+        try {
+            byte[] b = java.nio.file.Files.readAllBytes(f.toPath());
+            float[] pcm = new float[b.length / 2];
+            for (int k = 0; k < pcm.length; k++) pcm[k] = (short) ((b[2 * k] & 0xff) | (b[2 * k + 1] << 8)) / 32768f;
+            return pcm.length > 1600 ? pcm : null;
+        } catch (Exception e) { return null; }
+        finally { f.delete(); }
+    }
     @Override public void onLevel(float level) { avatar.level(level); }
 
     /* Bus.SpeechListener: her voice drives her mouth */

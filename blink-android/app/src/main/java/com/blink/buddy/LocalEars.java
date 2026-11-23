@@ -81,6 +81,16 @@ final class LocalEars {
         });
     }
 
+    /** Transcribes a recording made elsewhere (the rest of "Hey Sweety, ..." said in one breath) with Whistle. */
+    void transcribe(float[] clip) {
+        if (!Assistant.get(ctx).localHearing()) { cb.onProblem("I couldn't make out the rest. Say it again?"); return; }
+        cb.onPartial("(thinking)");
+        Assistant.get(ctx).transcribe(clip, text -> {
+            if (text == null || text.trim().isEmpty()) cb.onProblem("I didn't catch that. Try again?");
+            else cb.onHeard(text);
+        });
+    }
+
     private void finish(boolean ok, String problem) {
         main.post(() -> { recording = false; cb.onListening(false); if (!ok) cb.onProblem(problem); });
     }

@@ -31,6 +31,8 @@ env:
   KOKORO_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-en-v0_19.tar.bz2
   # sherpa-onnx 2 reads words from a pronunciation dictionary (no espeak-ng any more)
   KOKORO_LEXICON_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/lexicon-en-us.txt
+  # Sweety's own wake-word model, published by .github/workflows/wakeword.yml
+  WAKE_MODEL_URL: https://github.com/Nag451245/Mobile-Robo/releases/download/hey-sweety-model
 
 jobs:
   build:
@@ -71,6 +73,18 @@ jobs:
           pip install -q sentencepiece==0.2.0 numpy
           python ../test/kws.py prepare "$RUNNER_TEMP/$KWS_DIR" src/main/assets/kws
           ls -la libs src/main/assets/kws
+
+      - name: Sweety's own "Hey Sweety" model (trained by wakeword.yml; the keyword spotter stays as a fallback)
+        working-directory: blink-android/app
+        run: |
+          mkdir -p src/main/assets/wake
+          for f in hey_sweety.onnx metrics.json melspectrogram.onnx embedding_model.onnx; do
+            if ! curl -fsSL --retry 3 -o "src/main/assets/wake/$f" "$WAKE_MODEL_URL/$f"; then
+              echo "::warning::no trained Hey Sweety model yet ($f); the app uses the keyword spotter"
+              rm -rf src/main/assets/wake; break
+            fi
+          done
+          ls -la src/main/assets/wake 2>/dev/null && cat src/main/assets/wake/metrics.json | head -c 300 || true
 
       - name: Natural voice model (cached)
         id: kokoro
@@ -199,7 +213,13 @@ jobs:
           set -o pipefail
           curl -fsSL --retry 3 "$KWS_URL" | tar -xj -C "$RUNNER_TEMP"
           python test/kws.py prepare "$RUNNER_TEMP/$KWS_DIR" kws > /dev/null
-          python test/kws.py test kws speech/list.tsv speech/long_negative.wav 2>&1 | tee logs/6-wakeword.log
+          # The app uses Sweety's own trained model when it exists (same files the build puts in assets/wake), else the spotter.
+          mkdir -p wake; for f in hey_sweety.onnx metrics.json melspectrogram.onnx embedding_model.onnx; do curl -fsSL --retry 3 -o "wake/$f" "$WAKE_MODEL_URL/$f" || { rm -rf wake; break; }; done
+          if [ -f wake/hey_sweety.onnx ]; then
+            python test/wake.py test wake speech/list.tsv speech/long_negative.wav 2>&1 | tee logs/6-wakeword.log
+          else
+            python test/kws.py test kws speech/list.tsv speech/long_negative.wav 2>&1 | tee logs/6-wakeword.log
+          fi
 
       - name: Natural voice model (cached)
         if: always()

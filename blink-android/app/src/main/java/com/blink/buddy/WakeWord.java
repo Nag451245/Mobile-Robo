@@ -19,11 +19,16 @@ final class WakeWord {
     private static final String TAG = "SweetyWake";
     private KeywordSpotter kws;
     private OnlineStream stream;
+    private WakeModel own; // Sweety's own trained "Hey Sweety" model, used when the app has it (assets/wake/)
     String failure;
 
     /** Loads the model; returns false (and keeps the reason) if it can't, so the old Whistle listener takes over. */
     boolean load(Context c) {
-        if (kws != null) return true;
+        if (kws != null || own != null) return true;
+        if (WakeModel.present(c)) {
+            try { WakeModel m = new WakeModel(); m.load(c); own = m; return true; }
+            catch (Throwable e) { Log.w(TAG, "Hey Sweety model failed, using the keyword spotter", e); }
+        }
         try {
             String[] files = c.getAssets().list("kws");
             if (files == null || files.length == 0) { failure = "wake-word model missing"; return false; }
@@ -57,10 +62,19 @@ final class WakeWord {
         }
     }
 
-    boolean ready() { return kws != null; }
+    boolean ready() { return kws != null || own != null; }
+
+    /** Which detector is listening, for the status line. */
+    String kind() { return own != null ? "Sweety's own Hey Sweety model" : kws != null ? "the keyword spotter" : "none"; }
+
+    /** The own model's highest score in the last few seconds (-1 with the keyword spotter). */
+    float takePeak() { return own != null ? own.takePeak() : -1f; }
 
     /** Feeds 16 kHz mono audio; returns the keyword heard (e.g. "HEY SWEETY") or null. */
     String accept(float[] pcm, int n) {
+        if (own != null) {
+            try { return own.accept(pcm, n); } catch (Exception e) { Log.w(TAG, "Hey Sweety model", e); return null; }
+        }
         if (kws == null) return null;
         float[] a = n == pcm.length ? pcm : java.util.Arrays.copyOf(pcm, n);
         stream.acceptWaveform(a, 16000);
@@ -77,6 +91,7 @@ final class WakeWord {
 
     /** Forget any half-heard audio (after Sweety talked, or the mic was closed). */
     void reset() {
+        if (own != null) { own.reset(); return; }
         if (kws == null) return;
         try { stream.release(); } catch (Throwable ignored) { }
         stream = kws.createStream("");

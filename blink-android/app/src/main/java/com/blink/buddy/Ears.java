@@ -2,7 +2,10 @@ package com.blink.buddy;
 
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioFormat;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.ParcelFileDescriptor;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
@@ -53,6 +56,46 @@ final class Ears implements RecognitionListener {
         catch (Exception e) { cb.onProblem("I couldn't start listening."); }
     }
 
+    /** While recognising a handed-over recording: what to do if the recogniser can't (Whistle takes it). */
+    private Runnable audioFallback;
+
+    /**
+     * Recognises a recording instead of the microphone: the rest of "Hey Sweety, ..." said in one breath, which the
+     * wake listener kept. Android 13+ lets an app hand the phone's recogniser audio through a pipe. Returns false if
+     * that isn't possible here; on any error later, orElse runs (Whistle transcribes it instead).
+     */
+    boolean recognizeAudio(float[] pcm, Runnable orElse) {
+        if (recognizer == null || Build.VERSION.SDK_INT < 33) return false;
+        try {
+            ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
+            Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1);
+            i.putExtra(RecognizerIntent.EXTRA_BIASING_STRINGS, new ArrayList<>(java.util.Arrays.asList(HINTS)));
+            i.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE, pipe[0]);
+            i.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT, 1);
+            i.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING, AudioFormat.ENCODING_PCM_16BIT);
+            i.putExtra(RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE, 16000);
+            audioFallback = orElse;
+            recognizer.startListening(i);
+            listening = true;
+            Log.i("SweetyEars", "recognising the kept request with the phone's speech recogniser");
+            new Thread(() -> {
+                // 16-bit little-endian PCM, then a second of quiet so the recogniser knows the speech ended
+                byte[] b = new byte[(pcm.length + 16000) * 2];
+                for (int k = 0; k < pcm.length; k++) { int v = Math.max(-32768, Math.min(32767, Math.round(pcm[k] * 32767))); b[2 * k] = (byte) v; b[2 * k + 1] = (byte) (v >> 8); }
+                try (ParcelFileDescriptor.AutoCloseOutputStream out = new ParcelFileDescriptor.AutoCloseOutputStream(pipe[1])) { out.write(b); }
+                catch (Exception e) { Log.w("SweetyEars", "couldn't hand over the recording", e); }
+                try { pipe[0].close(); } catch (Exception ignored) { }
+            }, "sweety-handover").start();
+            return true;
+        } catch (Exception e) {
+            Log.w("SweetyEars", "can't hand the recording to the recogniser", e);
+            audioFallback = null;
+            return false;
+        }
+    }
+
     void stop() { if (recognizer != null && listening) recognizer.stopListening(); }
 
     void destroy() { if (recognizer != null) recognizer.destroy(); }
@@ -69,6 +112,7 @@ final class Ears implements RecognitionListener {
     @Override
     public void onError(int error) {
         done();
+        if (audioFallback != null) { Runnable r = audioFallback; audioFallback = null; Log.i("SweetyEars", "phone recogniser error " + error + " on the kept request; Whistle takes it"); r.run(); return; }
         Log.i("SweetyEars", "phone recogniser error " + error);
         boolean serviceTrouble = error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT || error == SpeechRecognizer.ERROR_SERVER
             || error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY || error >= 10; // 10+: server disconnected, language unavailable…
@@ -88,6 +132,7 @@ final class Ears implements RecognitionListener {
     @Override
     public void onResults(Bundle results) {
         done();
+        audioFallback = null;
         ArrayList<String> list = results != null ? results.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) : null;
         if (list == null || list.isEmpty() || list.get(0).trim().isEmpty()) cb.onProblem("I didn't catch that. Try again?");
         else { Log.i("SweetyEars", "heard: \"" + list.get(0) + "\""); cb.onHeard(list.get(0)); }
