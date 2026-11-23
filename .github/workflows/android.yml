@@ -290,11 +290,16 @@ jobs:
     needs: [build, host-tests]
     if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
-        api: [30, 34]
+        # Three emulators side by side: the app on Android 11 and 14 (phase A), and the real arm64 phone build
+        # under ARM translation (phase B, slow, so it gets its own machine instead of running after phase A).
+        include:
+          - {api: 30, phase: A}
+          - {api: 34, phase: A}
+          - {api: 34, phase: B}
     steps:
       - uses: actions/checkout@v4
 
@@ -347,19 +352,19 @@ jobs:
           disk-size: 6000M
           emulator-boot-timeout: 900
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-boot-anim -camera-back none
-          script: PHASE_B=${{ matrix.api == 34 && '1' || '0' }} timeout -k 60 1800 bash blink-android/test/emulator_test.sh Sweety.apk Sweety-x86_64.apk $HOME/qwen/chat.litertlm speech emu-out $PWD/voice 8089 $PWD/mocklog $PWD/vrm/sample.vrm
+          script: PHASES=${{ matrix.phase }} timeout -k 60 1500 bash blink-android/test/emulator_test.sh Sweety.apk Sweety-x86_64.apk $HOME/qwen/chat.litertlm speech emu-out $PWD/voice 8089 $PWD/mocklog $PWD/vrm/sample.vrm
 
       - name: Post the results
         if: always()
         run: |
-          bash blink-android/test/annotate.sh notice "api${{ matrix.api }} summary" emu-out/summary.txt 8000
+          bash blink-android/test/annotate.sh notice "api${{ matrix.api }}-${{ matrix.phase }} summary" emu-out/summary.txt 8000
           grep -E "/Sweety|FATAL|AndroidRuntime" emu-out/logcat.txt | grep -vE "mic: loudest|needle3: " > emu-out/sweety-log.txt || true
-          bash blink-android/test/annotate.sh notice "api${{ matrix.api }} sweety log" emu-out/sweety-log.txt 12000
+          bash blink-android/test/annotate.sh notice "api${{ matrix.api }}-${{ matrix.phase }} sweety log" emu-out/sweety-log.txt 12000
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: emulator-api${{ matrix.api }}
+          name: emulator-api${{ matrix.api }}-${{ matrix.phase }}
           path: emu-out
 
   publish:
