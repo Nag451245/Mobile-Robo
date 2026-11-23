@@ -172,8 +172,8 @@ def build_model(torch):
     nn = torch.nn
     return nn.Sequential(
         nn.Flatten(),
-        nn.Linear(16 * 96, 64), nn.LayerNorm(64), nn.ReLU(),
-        nn.Linear(64, 64), nn.LayerNorm(64), nn.ReLU(),
+        nn.Linear(16 * 96, 64), nn.LayerNorm(64), nn.ReLU(), nn.Dropout(0.2),
+        nn.Linear(64, 64), nn.LayerNorm(64), nn.ReLU(), nn.Dropout(0.2),
         nn.Linear(64, 1), nn.Sigmoid())
 
 
@@ -300,36 +300,40 @@ def main():
         return np.concatenate(out)
 
     log("features")
-    Xp = embed(windows_pos(pos_tr, 3))
-    Xn = np.concatenate([embed(windows_neg(near_tr, 3)), embed(windows_speech(len(Xp) * 2)), embed(windows_noise(len(Xp) // 3))])
+    Xp = embed(windows_pos(pos_tr, 4))
+    Xnear = embed(windows_neg(near_tr, 4))  # near misses: the hardest "not Hey Sweety" examples, weighted up below
+    Xn = np.concatenate([embed(windows_speech(len(Xp) * 2)), embed(windows_noise(len(Xp) // 3))])
     Vp = embed(windows_pos(pos_val, 1))
     Vn = embed(windows_neg(near_val, 2))
-    log(f"train: {len(Xp)} wake windows, {len(Xn)} others; check: {len(Vp)} wake, {len(Vn)} near misses")
+    log(f"train: {len(Xp)} wake windows, {len(Xnear)} near misses, {len(Xn)} other sounds; check: {len(Vp)} wake, {len(Vn)} near misses")
 
     log("training")
     model = build_model(torch)
     opt = torch.optim.Adam(model.parameters(), lr=1e-3)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=1e-3, total_steps=args.steps)
-    Xp_t, Xn_t = torch.from_numpy(Xp), torch.from_numpy(Xn)
+    Xp_t, Xnear_t, Xn_t = torch.from_numpy(Xp), torch.from_numpy(Xnear), torch.from_numpy(Xn)
     bce = torch.nn.BCELoss(reduction="none")
     for step in range(args.steps):
-        ip = torch.randint(0, len(Xp_t), (128,)); ineg = torch.randint(0, len(Xn_t), (384,))
-        x = torch.cat([Xp_t[ip], Xn_t[ineg]]); y = torch.cat([torch.ones(128), torch.zeros(384)])
+        ip = torch.randint(0, len(Xp_t), (128,)); inr = torch.randint(0, len(Xnear_t), (128,)); ineg = torch.randint(0, len(Xn_t), (256,))
+        x = torch.cat([Xp_t[ip], Xnear_t[inr], Xn_t[ineg]]); y = torch.cat([torch.ones(128), torch.zeros(384)])
         p = model(x).squeeze(1)
-        # false wake-ups cost more than misses, and more as training goes on (openWakeWord's recipe)
+        # false wake-ups cost more than misses, and more as training goes on (openWakeWord's recipe); near misses 3x
         wneg = 1 + 9 * step / args.steps
-        loss = (bce(p, y) * torch.where(y > 0, 1.0, wneg)).mean()
+        w = torch.cat([torch.ones(128), torch.full((128,), 3 * wneg), torch.full((256,), wneg)])
+        loss = (bce(p, y) * w).mean()
         opt.zero_grad(); loss.backward(); opt.step(); sched.step()
         if step % 2000 == 0 or step == args.steps - 1:
+            model.eval()
             with torch.no_grad():
                 rp = (model(torch.from_numpy(Vp)).squeeze(1) > 0.5).float().mean().item()
                 fn = (model(torch.from_numpy(Vn)).squeeze(1) > 0.5).float().mean().item()
+            model.train()
             log(f"step {step}: loss {loss.item():.4f}, held-out wake {rp:.1%}, near misses woken {fn:.1%}")
 
     model.eval()
     onnx_path = os.path.join(args.out, "hey_sweety.onnx")
     torch.onnx.export(model, torch.zeros(1, 16, 96), onnx_path, input_names=["input"], output_names=["output"],
-                      dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}}, opset_version=13)
+                      dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}}, opset_version=13, dynamo=False)  # the classic exporter: a plain graph onnxruntime-android runs
     head = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
 
     log("false wake-ups on unseen everyday speech (streaming, like the phone)")
@@ -344,7 +348,7 @@ def main():
     # The threshold: the most sensitive one with at most 0.5 false wake-ups an hour of everyday speech.
     ok = [r for r in rows if r["false_wakes_per_hour"] <= 0.5] or rows[-1:]
     best = ok[0]
-    metrics = {"threshold": best["threshold"], "rows": rows, "train_wake": len(Xp), "train_other": len(Xn),
+    metrics = {"threshold": best["threshold"], "rows": rows, "train_wake": len(Xp), "train_other": len(Xn) + len(Xnear),
                "test_speech_hours": hours, "generator_voices": 800}
     json.dump(metrics, open(os.path.join(args.out, "metrics.json"), "w"), indent=1)
     lines = [f"threshold {r['threshold']:.1f}: held-out 'Hey Sweety' woken {r['wake_held_out']:.1%}, near misses woken "

@@ -42,7 +42,7 @@ jobs:
           pip install -q torch torchaudio --index-url https://download.pytorch.org/whl/cpu
           # The PyPI package lacks piper_train (needed by the .pt voice generator), so it comes from the tagged source.
           git clone -q --depth 1 --branch v3.2.0 https://github.com/rhasspy/piper-sample-generator.git "$RUNNER_TEMP/psg"
-          pip install -q "$RUNNER_TEMP/psg" pytorch-lightning onnxruntime onnx scipy scikit-learn tqdm requests soundfile
+          pip install -q "$RUNNER_TEMP/psg" pytorch-lightning onnxruntime onnx onnxscript scipy scikit-learn tqdm requests soundfile
           echo "PYTHONPATH=$RUNNER_TEMP/psg" >> "$GITHUB_ENV"
           df -h . | tail -1
 
