@@ -19,6 +19,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Set alarms and timers in the Clock app -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- "Turn on Do Not Disturb" (the user allows it once in Android's settings) -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
 
     <!-- Lets Sweety find the phone's speech recognizer and voice -->
     <queries>
@@ -27,6 +29,29 @@
         </intent>
         <intent>
             <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+        <!-- "Open YouTube": the apps on the home screen, by name -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- Maps, search, camera, music and Spotify links -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="spotify" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.WEB_SEARCH" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
         </intent>
     </queries>
 

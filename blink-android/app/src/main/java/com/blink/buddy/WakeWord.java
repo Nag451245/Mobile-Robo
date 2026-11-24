@@ -27,16 +27,20 @@ final class WakeWord {
     /** Loads the detectors; returns false (and keeps the reason) if none can listen, so the Whistle listener takes over. */
     boolean load(Context c) {
         if (kws != null || own != null) return true;
-        boolean voice = VoiceMatch.enrolled(c);
+        boolean voice = false;
+        for (String w : WakeModel.WORDS) voice |= WakeModel.wordOn(c, w) && VoiceMatch.enrolled(c, w);
         if (WakeModel.featuresPresent(c) && (WakeModel.present(c) || voice)) {
             try {
                 WakeModel m = new WakeModel();
                 m.load(c);
-                if (voice) { VoiceMatch v = new VoiceMatch(); if (v.load(c)) m.voice = v; }
+                for (String w : WakeModel.WORDS)
+                    if (WakeModel.wordOn(c, w) && VoiceMatch.enrolled(c, w)) { VoiceMatch v = new VoiceMatch(w); if (v.load(c)) m.voices.add(v); }
                 own = m;
             } catch (Throwable e) { Log.w(TAG, "Hey Sweety model / Voice Match failed", e); own = null; }
         }
         if (own != null && own.hasHead()) return true; // the trained model replaces the keyword spotter
+        // The keyword spotter only knows "Hey Sweety": not wanted if the user switched that wake word off.
+        if (!WakeModel.wordOn(c, "sweety")) { if (own == null) failure = "Hey Buddy needs its model or Voice Match"; return own != null; }
         try {
             String[] files = c.getAssets().list("kws");
             if (files == null || files.length == 0) { failure = "wake-word model missing"; return false; }
@@ -74,8 +78,12 @@ final class WakeWord {
 
     /** Which detector is listening, for the status line. */
     String kind() {
-        String general = own != null && own.hasHead() ? "Sweety's own Hey Sweety model" : kws != null ? "the keyword spotter" : "none";
-        return general + (own != null && own.voice != null ? " + Voice Match" : "");
+        StringBuilder models = new StringBuilder();
+        if (own != null) for (String w : WakeModel.WORDS) if (own.hasHead(w)) models.append(models.length() > 0 ? " + " : "").append(WakeModel.phrase(w));
+        String general = models.length() > 0 ? "Sweety's own " + models + " model" + (models.indexOf("+") > 0 ? "s" : "") : kws != null ? "the keyword spotter" : "none";
+        StringBuilder vm = new StringBuilder();
+        if (own != null) for (VoiceMatch v : own.voices) vm.append(vm.length() > 0 ? ", " : "").append(WakeModel.phrase(v.word));
+        return general + (vm.length() > 0 ? " + Voice Match (" + vm + ")" : "");
     }
 
     /** Forgets the loaded detectors, so the next load() picks up a new Voice Match or model. */

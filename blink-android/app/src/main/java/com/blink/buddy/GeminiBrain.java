@@ -67,7 +67,10 @@ final class GeminiBrain {
             .append("You are Sweety, a warm, playful little robot girl who lives on the user's phone as their personal assistant and friend. ")
             .append("Be genuinely helpful and smart: give correct, specific answers, like a caring, clever friend. ")
             .append("Speak naturally, the way you'd talk out loud: usually one to three sentences, warm and a little cheeky, no lists, no markdown, no emojis. ")
-            .append("If a request needs a phone action (alarm, timer or reminder, call, message, torch, music, notes, battery or time, a dance or trick, hiding), call the matching function instead of describing it. ")
+            .append("If you're asked about something live (weather, news, scores, prices) and can't look it up, say so kindly and give what you do know. ")
+            .append("If a request needs a phone action (alarm, timer or reminder, call, message, torch, music, a particular song or video, notes, shopping or to-do list, ")
+            .append("opening an app, directions or places nearby, a web search, a phone setting, do not disturb, stopwatch, finding the phone, the camera, battery or time, a dance or trick, hiding), ")
+            .append("call the matching function instead of describing it. ")
             .append("If the user tells you something worth remembering about them (name, birthday, likes, people), call remember. ")
             .append("Start EVERY spoken reply with a tag [gesture|mood], gesture one of ").append(GESTURES)
             .append(" and mood one of ").append(MOODS).append(", for example: [wave|happy] Hi! ")
@@ -81,8 +84,9 @@ final class GeminiBrain {
 
     /** The phone actions, in Gemini's function-calling format (types upper-cased), plus "remember". */
     static JSONArray functions() throws Exception {
-        JSONArray tools = new JSONArray(Call.TOOLS_JSON), out = new JSONArray();
+        JSONArray tools = new JSONArray(Call.TOOLS_JSON), extra = new JSONArray(Call.EXTRA_TOOLS_JSON), out = new JSONArray();
         for (int i = 0; i < tools.length(); i++) out.put(upperTypes(tools.getJSONObject(i)));
+        for (int i = 0; i < extra.length(); i++) out.put(upperTypes(extra.getJSONObject(i)));
         out.put(new JSONObject().put("name", "remember").put("description", "Remember a fact about the user for later chats, e.g. their name, birthday or favourite food")
             .put("parameters", new JSONObject().put("type", "OBJECT").put("properties", new JSONObject().put("fact", new JSONObject().put("type", "STRING")))
                 .put("required", new JSONArray().put("fact"))));
@@ -102,7 +106,22 @@ final class GeminiBrain {
         return r;
     }
 
-    JSONObject request(String model, String text, Calendar now, List<String> memory, boolean fast) throws Exception {
+    /**
+     * Live questions (weather, news, scores, prices, "today", "latest"...) are answered with Google Search, like a
+     * real assistant. Not every free key may use Search: if Google refuses, she answers without it and doesn't try
+     * Search again for a few hours.
+     */
+    private static final Pattern LIVE = Pattern.compile("(?i)\\b(weather|forecast|temperature|rain(ing)?|humid|news|headlines?|score|scores|match|who won|winning|stock|share price|price of|"
+        + "exchange rate|dollar|rupee|bitcoin|traffic|flight status|open now|today|tonight|tomorrow|this week|this weekend|latest|current(ly)?|right now|these days|recent(ly)?|"
+        + "election|trending|release date|what'?s happening|happening)\\b");
+    static boolean live(String text) { return text != null && LIVE.matcher(text).find(); }
+    private boolean searchAllowed() { try { return System.currentTimeMillis() > Long.parseLong(store.get("gemini_search_off_until", "0")); } catch (Exception e) { return true; } }
+    /** Set when the last answer came without Search because Google refused it for this key. */
+    volatile boolean searchRefused;
+
+    JSONObject request(String model, String text, Calendar now, List<String> memory, boolean fast) throws Exception { return request(model, text, now, memory, fast, false); }
+
+    JSONObject request(String model, String text, Calendar now, List<String> memory, boolean fast, boolean search) throws Exception {
         JSONArray contents = new JSONArray();
         for (JSONObject h : history) contents.put(h);
         contents.put(turn("user", text));
@@ -111,10 +130,14 @@ final class GeminiBrain {
         // older ones a thinking budget of 0. If a model refuses either, it's asked again without (see generate).
         if (fast) gen.put("thinkingConfig", version(model) >= 3 ? new JSONObject().put("thinkingLevel", "low")
                                                                 : new JSONObject().put("thinkingBudget", 0));
+        // With Search, Google's search is her only tool for this answer (phone actions don't need live facts).
+        JSONArray tools = search ? new JSONArray().put(new JSONObject().put("google_search", new JSONObject()))
+                                 : new JSONArray().put(new JSONObject().put("functionDeclarations", functions()));
+        String brief = persona(now, memory) + (search ? " Use Google Search for up-to-date facts, and say them simply, like telling a friend." : "");
         return new JSONObject()
-            .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", persona(now, memory)))))
+            .put("systemInstruction", new JSONObject().put("parts", new JSONArray().put(new JSONObject().put("text", brief))))
             .put("contents", contents)
-            .put("tools", new JSONArray().put(new JSONObject().put("functionDeclarations", functions())))
+            .put("tools", tools)
             .put("generationConfig", gen);
     }
 
@@ -143,6 +166,7 @@ final class GeminiBrain {
 
     private Answer askNow(String text, List<String> memory) {
         if (!configured()) { lastError = "no Gemini key"; return null; }
+        searchRefused = false;
         if (System.currentTimeMillis() - lastTurn > 30 * 60_000L) history.clear(); // a new chat after a long pause
         // Like a real assistant's backend: Google's models are often overloaded ("high demand", 503) or hang, while
         // others answer in a second. So each model gets a short timeout, a busy one is skipped for a few minutes,
@@ -207,10 +231,19 @@ final class GeminiBrain {
     private String[] generate(String model, String text, List<String> memory) throws Exception {
         String flag = "gemini_fast_" + model;
         boolean fast = !"no".equals(store.get(flag, "yes"));
-        String[] res = call(model, request(model, text, Calendar.getInstance(), memory, fast).toString());
+        boolean search = live(text) && searchAllowed();
+        String[] res = call(model, request(model, text, Calendar.getInstance(), memory, fast, search).toString());
         if (res[0].equals("400") && fast && res[1].toLowerCase(Locale.ROOT).contains("think")) {
             store.put(flag, "no"); // this model doesn't take that setting
-            res = call(model, request(model, text, Calendar.getInstance(), memory, false).toString());
+            fast = false;
+            res = call(model, request(model, text, Calendar.getInstance(), memory, false, search).toString());
+        }
+        if (search && (res[0].equals("429") || res[0].equals("402") || res[0].equals("403") || res[0].equals("400"))) {
+            // Google wouldn't search for this key (a free key may not include it): answer from what she knows, and
+            // leave Search alone for six hours.
+            store.put("gemini_search_off_until", String.valueOf(System.currentTimeMillis() + 6 * 3600_000L));
+            searchRefused = true;
+            return call(model, request(model, text, Calendar.getInstance(), memory, fast, false).toString());
         }
         return res;
     }

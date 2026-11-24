@@ -33,6 +33,7 @@ env:
   KOKORO_LEXICON_URL: https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/lexicon-en-us.txt
   # Sweety's own wake-word model, published by .github/workflows/wakeword.yml
   WAKE_MODEL_URL: https://github.com/Nag451245/Mobile-Robo/releases/download/hey-sweety-model
+  BUDDY_MODEL_URL: https://github.com/Nag451245/Mobile-Robo/releases/download/hey-buddy-model
 
 jobs:
   build:
@@ -91,6 +92,14 @@ jobs:
           else
             echo "::warning::the trained Hey Sweety model isn't good enough yet; the app keeps the keyword spotter (plus Voice Match)"
             rm -f metrics.json
+          fi
+          # "Hey Buddy", the second wake word: its own model, same gate (until it exists, Voice Match covers it).
+          if curl -fsSL --retry 3 -o buddy.json "$BUDDY_MODEL_URL/metrics.json" && python ../wakeword/good_enough.py buddy.json; then
+            mv buddy.json src/main/assets/wake/hey_buddy.json
+            curl -fsSL --retry 3 -o src/main/assets/wake/hey_buddy.onnx "$BUDDY_MODEL_URL/hey_buddy.onnx"
+          else
+            echo "::notice::no Hey Buddy model good enough to ship yet; Hey Buddy works through Voice Match"
+            rm -f buddy.json
           fi
           ls -la src/main/assets/wake
 
@@ -231,6 +240,13 @@ jobs:
             python test/wake.py test wake speech/list.tsv speech/long_negative.wav 2>&1 | tee logs/6-wakeword.log
           else
             python test/kws.py test kws speech/list.tsv speech/long_negative.wav 2>&1 | tee logs/6-wakeword.log
+          fi
+          # Hey Buddy, once its model ships: its own recordings ("Hey Buddy..." must wake her, "somebody", "my buddy"... never)
+          mkdir -p wakeb; for f in hey_buddy.onnx metrics.json melspectrogram.onnx embedding_model.onnx; do curl -fsSL --retry 3 -o "wakeb/$f" "$BUDDY_MODEL_URL/$f" 2>/dev/null || { rm -rf wakeb; break; }; done
+          [ -f wakeb/metrics.json ] && ! python wakeword/good_enough.py wakeb/metrics.json && rm -rf wakeb
+          if [ -f wakeb/hey_buddy.onnx ]; then
+            bash test/make_speech.sh test/wake_phrases_buddy.tsv speech_buddy > /dev/null
+            WAKE_NAME=hey_buddy python test/wake.py test wakeb speech_buddy/list.tsv speech/long_negative.wav 2>&1 | tee logs/6b-wakeword-buddy.log
           fi
 
       - name: Natural voice model (cached)

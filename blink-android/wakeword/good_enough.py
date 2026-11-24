@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""good_enough.py <metrics.json>: exit 0 if the trained Hey Sweety model may ship, else 1 (and say why).
+"""good_enough.py <metrics.json>: exit 0 if the trained wake-word model (Hey Sweety or Hey Buddy) may ship, else 1 (and say why).
 
 A model ships only when, at its chosen threshold, it wakes on most held-out "Hey Sweety" clips and almost never on
 everyday speech; otherwise the app keeps the keyword spotter."""

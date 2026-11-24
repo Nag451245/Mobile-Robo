@@ -145,8 +145,8 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         preview.postDelayed(this::refreshBrain, 4000);
 
         // Hey Sweety: hands-free while the screen is on
-        col.addView(header("Hey Sweety (hands-free)"));
-        col.addView(text("Say \"Hey Sweety\" anywhere on your phone. She chirps, her talk card pops up, and you say what you need, like \"set an alarm for 7 am\". "
+        col.addView(header("Hey Sweety / Hey Buddy (hands-free)"));
+        col.addView(text("Say \"Hey Sweety\" (or \"Hey Buddy\") anywhere on your phone. She chirps, her talk card pops up, and you say what you need, like \"set an alarm for 7 am\". "
             + "She listens for her name only while the screen is on and unlocked (the detector runs on the phone), and a notification shows while it's on. "
             + "Also allow \"display over other apps\" (Start floating Sweety asks for it) so her card can pop up over any app.", 14, false));
         wakeBox = new CheckBox(this); wakeBox.setText("Listen for \"Hey Sweety\""); wakeBox.setTextColor(0xFF2A1D40); wakeBox.setTextSize(16);
@@ -156,8 +156,29 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         wakeInfo = text("", 13, false);
         wakeInfo.setTextColor(0xFF2E7D5B);
         col.addView(wakeInfo);
-        // Voice Match, like Google's: a few recordings of the user saying "Hey Sweety", so she wakes for their voice
-        col.addView(text("Voice Match: say \"Hey Sweety\" " + VoiceMatch.SAMPLES + " times so Sweety learns your voice and wakes for you far more reliably. Your recordings stay on the phone.", 14, false));
+        // Which wake words she answers to (at least one stays on)
+        col.addView(text("Wake words she answers to:", 14, false));
+        final CheckBox[] wordBoxes = new CheckBox[WakeModel.WORDS.length];
+        for (int i = 0; i < WakeModel.WORDS.length; i++) {
+            final String w = WakeModel.WORDS[i];
+            CheckBox wb = new CheckBox(this); wb.setText("\"" + WakeModel.phrase(w) + "\""); wb.setTextColor(0xFF2A1D40); wb.setTextSize(16);
+            wb.setChecked(WakeModel.wordOn(this, w));
+            wordBoxes[i] = wb;
+            wb.setOnCheckedChangeListener((b, on) -> {
+                boolean any = false;
+                for (CheckBox x : wordBoxes) any |= x != null && x.isChecked();
+                if (!any) { b.setChecked(true); toast("Keep at least one wake word."); return; }
+                prefs.edit().putBoolean("wake_" + w, on).apply();
+                WakeService.reloadDetectors = true;
+            });
+            col.addView(wb, full(px(2)));
+        }
+        col.addView(text("\"Hey Buddy\" needs its own trained model (it comes with an app update once it's good enough) or Voice Match for it below.", 13, false));
+        // Voice Match, like Google's: a few recordings of the user saying the wake word, so she wakes for their voice
+        col.addView(text("Voice Match: say the wake word " + VoiceMatch.SAMPLES + " times so Sweety learns your voice and wakes for you far more reliably. Your recordings stay on the phone. Voice Match for:", 14, false));
+        String[][] vmWords = new String[WakeModel.WORDS.length][];
+        for (int i = 0; i < vmWords.length; i++) vmWords[i] = new String[]{WakeModel.WORDS[i], WakeModel.phrase(WakeModel.WORDS[i])};
+        col.addView(chipRow(vmWords, id -> { if (vmBusy) return; vmWord = id; vmSamples.clear(); refreshVoiceMatch(); }));
         vmStatus = text("", 13, false);
         vmStatus.setTextColor(0xFF2E7D5B);
         col.addView(vmStatus);
@@ -165,7 +186,7 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         vmRecord.setOnClickListener(v -> recordVoiceSample());
         col.addView(vmRecord, full(px(6)));
         Button vmForget = button("Remove Voice Match", false);
-        vmForget.setOnClickListener(v -> { VoiceMatch.forget(this); vmSamples.clear(); WakeService.reloadDetectors = true; refreshVoiceMatch(); toast("Voice Match removed."); });
+        vmForget.setOnClickListener(v -> { VoiceMatch.forget(this, vmWord); vmSamples.clear(); WakeService.reloadDetectors = true; refreshVoiceMatch(); toast("Voice Match removed."); });
         col.addView(vmForget, full(px(6)));
         refreshVoiceMatch();
         col.addView(text("Like Gemini: make Sweety your phone's assistant, then hold the power or home button (or swipe up from a bottom corner) to call her from anywhere, even the lock screen.", 14, false));
@@ -418,16 +439,18 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
     private TextView vmStatus;
     private Button vmRecord;
     private final java.util.List<float[]> vmSamples = new java.util.ArrayList<>();
+    private String vmWord = "sweety"; // which wake word Voice Match is recording
     private volatile boolean vmBusy;
 
     private void refreshVoiceMatch() {
         if (vmStatus == null) return;
-        boolean on = VoiceMatch.enrolled(this);
+        boolean on = VoiceMatch.enrolled(this, vmWord);
+        String said = WakeModel.phrase(vmWord);
         if (vmBusy) return;
         if (!vmSamples.isEmpty()) vmStatus.setText("Got " + vmSamples.size() + " of " + VoiceMatch.SAMPLES + ". Again, the same way you'd call her.");
-        else vmStatus.setText(on ? "Voice Match is on: Sweety knows your voice." : "Voice Match is off.");
-        vmRecord.setText(vmSamples.isEmpty() && on ? "Record my voice again"
-            : "Say \"Hey Sweety\" (" + (vmSamples.size() + 1) + " of " + VoiceMatch.SAMPLES + ")");
+        else vmStatus.setText(on ? "Voice Match for \"" + said + "\" is on: Sweety knows your voice." : "Voice Match for \"" + said + "\" is off.");
+        vmRecord.setText(vmSamples.isEmpty() && on ? "Record my \"" + said + "\" again"
+            : "Say \"" + said + "\" (" + (vmSamples.size() + 1) + " of " + VoiceMatch.SAMPLES + ")");
     }
 
     /** Records one "Hey Sweety" (up to 2.5 s); after the last one, builds the Voice Match from all of them. */
@@ -438,7 +461,7 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
             return;
         }
         vmBusy = true;
-        vmStatus.setText("Listening… say \"Hey Sweety\" now");
+        vmStatus.setText("Listening… say \"" + WakeModel.phrase(vmWord) + "\" now");
         vmRecord.setEnabled(false);
         WakeService.hold(4000); // the hands-free listener lets go of the microphone meanwhile
         new Thread(() -> {
@@ -467,7 +490,7 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
             runOnUiThread(() -> {
                 vmBusy = false;
                 vmRecord.setEnabled(true);
-                if (got == null) { refreshVoiceMatch(); toast("I didn't catch a clear \"Hey Sweety\". Try again, a little closer."); return; }
+                if (got == null) { refreshVoiceMatch(); toast("I didn't catch a clear \"" + WakeModel.phrase(vmWord) + "\". Try again, a little closer."); return; }
                 vmSamples.add(got);
                 if (vmSamples.size() < VoiceMatch.SAMPLES) { refreshVoiceMatch(); return; }
                 buildVoiceMatch();
@@ -480,6 +503,7 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         vmStatus.setText("Learning your voice…");
         vmRecord.setEnabled(false);
         final java.util.List<float[]> samples = new java.util.ArrayList<>(vmSamples);
+        final String word = vmWord;
         new Thread(() -> {
             String problem = null;
             try {
@@ -490,9 +514,9 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
                 for (float[] s : samples) { float[][] t = VoiceMatch.template(features, s); if (t != null && t.length >= 3) ts.add(t); }
                 features.close();
                 if (ts.size() < 3) throw new Exception("the recordings were too short");
-                VoiceMatch.save(this, ts);
+                VoiceMatch.save(this, word, ts);
                 WakeService.reloadDetectors = true;
-                android.util.Log.i("SweetyWake", "Voice Match set up from " + ts.size() + " recordings");
+                android.util.Log.i("SweetyWake", "Voice Match (" + word + ") set up from " + ts.size() + " recordings");
             } catch (Exception e) { problem = e.getMessage(); }
             final String p = problem;
             runOnUiThread(() -> {

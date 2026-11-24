@@ -383,6 +383,16 @@ final class Assistant {
                 case "take_note": note(a.optString("text"), host); break;
                 case "read_notes": readNotes(host); break;
                 case "sweety_fun": fun(a, host); break;
+                case "open_app": openApp(a.optString("name"), host); break;
+                case "navigate": navigate(a, host); break;
+                case "web_search": webSearch(a.optString("query", text), host); break;
+                case "phone_setting": setting(a.optString("setting", "all"), host); break;
+                case "do_not_disturb": dnd(a.optBoolean("on", true), host); break;
+                case "stopwatch": stopwatch(a.optString("action", "start"), host); break;
+                case "find_phone": findPhone(host); break;
+                case "list": list(a, host); break;
+                case "play_media": playMedia(a.optString("query"), a.optString("app", "any"), host); break;
+                case "camera": camera(a.optString("mode", "photo"), host); break;
                 default: chat(text, host);
             }
         } catch (Exception e) {
@@ -553,8 +563,9 @@ final class Assistant {
             case "hide":
                 if (OverlayService.running) {
                     long min = OverlayService.hideMs(app) / 60_000L;
-                    reply(host, pick("Okay, I'll hide! I'll pop back in " + min + " minutes, or say Hey Sweety, come back.",
-                        "Peekaboo, I'm hiding! Back in " + min + " minutes, or call me sooner."), "hide", "happy");
+                    String when = min == 1 ? "a minute" : min == 60 ? "an hour" : min + " minutes";
+                    reply(host, pick("Okay, I'll hide! I'll pop back in " + when + ", or say Hey Sweety, come back.",
+                        "Peekaboo, I'm hiding! Back in " + when + ", or call me sooner."), "hide", "happy");
                 }
                 else reply(host, "I'm already tucked away. Say come back and I'll pop out!", "nod", "happy");
                 break;
@@ -632,6 +643,189 @@ final class Assistant {
         else if (chatBrain.status().contains("stopped after")) reply(host, "Sorry, my chat brain doesn't work on this phone. I can still do alarms, calls, music, tricks and more!", "shrug", "sad");
         else if (chatBrain.ready()) reply(host, "Hmm, that one took me too long to think about. Ask me again?", "shrug", "curious");
         else reply(host, "Hmm, my chat brain hiccuped. " + chatBrain.status() + ". Try asking again?", "shrug", "curious");
+    }
+
+    /* ------------------------------------------------------------ more actions (docs/requirements.md, section 3) */
+    /** Opens an app by name: the launcher apps whose name matches best (exact, then starts with, then contains). */
+    private void openApp(String name, Host host) {
+        String want = name == null ? "" : name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9 ]", "").trim();
+        if (want.isEmpty()) { reply(host, "Which app should I open?", "shrug", "curious"); return; }
+        android.content.pm.PackageManager pm = app.getPackageManager();
+        Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+        android.content.pm.ResolveInfo best = null;
+        int bestScore = 0;
+        for (android.content.pm.ResolveInfo ri : pm.queryIntentActivities(launcher, 0)) {
+            String label = String.valueOf(ri.loadLabel(pm)).toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9 ]", "").trim();
+            String w = want.replace(" ", ""), l = label.replace(" ", "");
+            int score = l.equals(w) ? 3 : l.startsWith(w) || w.startsWith(l) && l.length() > 2 ? 2 : l.contains(w) && w.length() > 2 ? 1 : 0;
+            if (score > bestScore) { bestScore = score; best = ri; }
+        }
+        if (best == null) { reply(host, "I couldn't find an app called " + name + " on this phone.", "shrug", "curious"); return; }
+        Intent i = pm.getLaunchIntentForPackage(best.activityInfo.packageName);
+        String label = String.valueOf(best.loadLabel(pm));
+        if (i != null && open(host, i)) reply(host, "Opening " + label + ".", "wave", "happy");
+        else reply(host, "I couldn't open " + label + ".", "shrug", "sad");
+    }
+
+    /** Directions in Maps, or places of a kind nearby (opens Google Maps, or whatever handles maps links). */
+    private void navigate(JSONObject a, Host host) {
+        String to = a.optString("to", "").trim();
+        if (to.isEmpty()) { reply(host, "Where to?", "shrug", "curious"); return; }
+        Uri u = a.optBoolean("nearby", false)
+            ? Uri.parse("https://www.google.com/maps/search/?api=1&query=" + Uri.encode(to + " near me"))
+            : Uri.parse("https://www.google.com/maps/dir/?api=1&destination=" + Uri.encode(to) + "&travelmode=" + a.optString("mode", "driving"));
+        if (open(host, new Intent(Intent.ACTION_VIEW, u)))
+            reply(host, a.optBoolean("nearby", false) ? "Here are " + to + " near you." : "Here's the way to " + to + ". Have a safe trip!", "wave", "happy");
+        else reply(host, "I couldn't open Maps on this phone.", "shrug", "sad");
+    }
+
+    private void webSearch(String query, Host host) {
+        Intent i = new Intent(Intent.ACTION_WEB_SEARCH).putExtra(android.app.SearchManager.QUERY, query);
+        if (!open(host, i)) i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode(query)));
+        if (i.getAction().equals(Intent.ACTION_WEB_SEARCH) || open(host, i)) reply(host, "Here's what I found for " + query + ".", "nod", "curious");
+        else reply(host, "I couldn't open a browser.", "shrug", "sad");
+    }
+
+    /** Android doesn't let apps flip most settings themselves, so she opens the right switch (a pop-up panel where there is one). */
+    private void setting(String which, Host host) {
+        boolean q = android.os.Build.VERSION.SDK_INT >= 29;
+        String action; String said;
+        switch (which) {
+            case "wifi": action = q ? android.provider.Settings.Panel.ACTION_WIFI : android.provider.Settings.ACTION_WIFI_SETTINGS; said = "Here's Wi-Fi. Tap to switch it."; break;
+            case "mobile_data": action = q ? android.provider.Settings.Panel.ACTION_INTERNET_CONNECTIVITY : android.provider.Settings.ACTION_DATA_ROAMING_SETTINGS; said = "Here's mobile data. Tap to switch it."; break;
+            case "bluetooth": action = android.provider.Settings.ACTION_BLUETOOTH_SETTINGS; said = "Here's Bluetooth. Tap the switch."; break;
+            case "airplane": action = android.provider.Settings.ACTION_AIRPLANE_MODE_SETTINGS; said = "Here's airplane mode."; break;
+            case "hotspot": action = android.provider.Settings.ACTION_WIRELESS_SETTINGS; said = "Here are the hotspot and network settings."; break;
+            case "nfc": action = q ? android.provider.Settings.Panel.ACTION_NFC : android.provider.Settings.ACTION_NFC_SETTINGS; said = "Here's NFC."; break;
+            case "volume": action = q ? android.provider.Settings.Panel.ACTION_VOLUME : android.provider.Settings.ACTION_SOUND_SETTINGS; said = "Here are the volume controls."; break;
+            case "brightness": action = android.provider.Settings.ACTION_DISPLAY_SETTINGS; said = "Here's the brightness."; break;
+            case "location": action = android.provider.Settings.ACTION_LOCATION_SOURCE_SETTINGS; said = "Here's location."; break;
+            case "battery_saver": action = android.provider.Settings.ACTION_BATTERY_SAVER_SETTINGS; said = "Here's battery saver."; break;
+            default: action = android.provider.Settings.ACTION_SETTINGS; said = "Here are your settings.";
+        }
+        if (open(host, new Intent(action)) || open(host, new Intent(android.provider.Settings.ACTION_SETTINGS))) reply(host, said, "nod", "happy");
+        else reply(host, "I couldn't open the settings.", "shrug", "sad");
+    }
+
+    private void dnd(boolean on, Host host) {
+        android.app.NotificationManager nm = (android.app.NotificationManager) app.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (nm == null) { reply(host, "I can't change Do Not Disturb on this phone.", "shrug", "sad"); return; }
+        if (!nm.isNotificationPolicyAccessGranted()) { // Android asks the user once to let Sweety do this
+            open(host, new Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
+            reply(host, "First, allow Sweety to change Do Not Disturb on this screen, then ask me again.", "shrug", "curious");
+            return;
+        }
+        nm.setInterruptionFilter(on ? android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY : android.app.NotificationManager.INTERRUPTION_FILTER_ALL);
+        reply(host, on ? "Do Not Disturb is on. Shh!" : "Do Not Disturb is off.", on ? "sleep" : "wave", "happy");
+    }
+
+    /** A stopwatch that keeps running while Sweety is closed (start time kept in her settings). */
+    private void stopwatch(String action, Host host) {
+        long now = System.currentTimeMillis();
+        long start = prefs.getLong("sw_start", 0), kept = prefs.getLong("sw_kept", 0);
+        long total = kept + (start > 0 ? now - start : 0);
+        switch (action) {
+            case "stop":
+                if (start == 0) { reply(host, total > 0 ? "The stopwatch is already stopped at " + duration(total) + "." : "The stopwatch isn't running.", "shrug", "curious"); return; }
+                prefs.edit().putLong("sw_start", 0).putLong("sw_kept", total).apply();
+                reply(host, "Stopped at " + duration(total) + ".", "nod", "happy"); return;
+            case "reset":
+                prefs.edit().putLong("sw_start", 0).putLong("sw_kept", 0).apply();
+                reply(host, "Stopwatch reset.", "nod", "happy"); return;
+            case "read":
+                reply(host, total == 0 ? "The stopwatch hasn't started." : (start > 0 ? "It's been " : "It stopped at ") + duration(total) + ".", "nod", "happy"); return;
+            default:
+                if (start > 0) { reply(host, "It's already running: " + duration(total) + " so far.", "nod", "happy"); return; }
+                prefs.edit().putLong("sw_start", now).apply();
+                reply(host, total > 0 ? "Stopwatch going again from " + duration(total) + "." : "Stopwatch started. Go!", "jump", "happy");
+        }
+    }
+
+    private static String duration(long ms) {
+        long s = ms / 1000, h = s / 3600, m = s % 3600 / 60, sec = s % 60;
+        StringBuilder b = new StringBuilder();
+        if (h > 0) b.append(h).append(h == 1 ? " hour " : " hours ");
+        if (m > 0) b.append(m).append(m == 1 ? " minute " : " minutes ");
+        if (h == 0 && (sec > 0 || m == 0)) b.append(b.length() > 0 ? "and " : "").append(sec).append(sec == 1 ? " second" : " seconds");
+        return b.toString().trim();
+    }
+
+    /** Rings loudly for 20 seconds (alarm volume, even on silent), so the user can find the phone. */
+    private void findPhone(Host host) {
+        reply(host, "I'm here! Follow the noise!", "jump", "surprised");
+        try {
+            AudioManager am = (AudioManager) app.getSystemService(Context.AUDIO_SERVICE);
+            int before = am.getStreamVolume(AudioManager.STREAM_ALARM);
+            am.setStreamVolume(AudioManager.STREAM_ALARM, am.getStreamMaxVolume(AudioManager.STREAM_ALARM), 0);
+            Uri tone = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM);
+            if (tone == null) tone = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE);
+            android.media.Ringtone r = android.media.RingtoneManager.getRingtone(app, tone);
+            if (r == null) return;
+            r.setAudioAttributes(new android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_ALARM).build());
+            main.postDelayed(r::play, 1800); // after her line
+            main.postDelayed(() -> { r.stop(); am.setStreamVolume(AudioManager.STREAM_ALARM, before, 0); }, 21_800);
+        } catch (Exception e) { Log.w(TAG, "find my phone", e); }
+    }
+
+    /** Shopping and to-do lists, kept on the phone. */
+    private void list(JSONObject a, Host host) {
+        String which = "shopping".equals(a.optString("list")) || a.optString("list").matches("(?i).*(shop|grocer).*") ? "shopping" : "todo";
+        String label = "shopping".equals(which) ? "shopping list" : "to-do list";
+        String key = "list_" + which;
+        try {
+            JSONArray items = new JSONArray(prefs.getString(key, "[]"));
+            String item = a.optString("item", "").trim();
+            switch (a.optString("action", "read")) {
+                case "add": {
+                    if (item.isEmpty()) { reply(host, "What should I add to your " + label + "?", "shrug", "curious"); return; }
+                    java.util.List<String> added = new java.util.ArrayList<>();
+                    for (String it : item.split("\\s*(?:,|\\band\\b|&)\\s*")) if (!it.trim().isEmpty()) { items.put(it.trim()); added.add(it.trim()); }
+                    prefs.edit().putString(key, items.toString()).apply();
+                    reply(host, "Added " + String.join(" and ", added) + " to your " + label + ".", "nod", "happy"); return;
+                }
+                case "remove": {
+                    JSONArray kept = new JSONArray(); boolean gone = false;
+                    for (int i = 0; i < items.length(); i++) { String it = items.getString(i); if (!gone && it.equalsIgnoreCase(item) || it.toLowerCase(Locale.ROOT).contains(item.toLowerCase(Locale.ROOT)) && !gone && !item.isEmpty()) gone = true; else kept.put(it); }
+                    prefs.edit().putString(key, kept.toString()).apply();
+                    reply(host, gone ? "Took " + item + " off your " + label + "." : item + " wasn't on your " + label + ".", "nod", gone ? "happy" : "curious"); return;
+                }
+                case "clear":
+                    prefs.edit().putString(key, "[]").apply();
+                    reply(host, "Your " + label + " is empty now.", "nod", "happy"); return;
+                default: {
+                    if (items.length() == 0) { reply(host, "Your " + label + " is empty.", "shrug", "neutral"); return; }
+                    StringBuilder sb = new StringBuilder("On your " + label + ": ");
+                    for (int i = 0; i < items.length(); i++) sb.append(i == 0 ? "" : i == items.length() - 1 ? " and " : ", ").append(items.getString(i));
+                    reply(host, sb.append(".").toString(), "nod", "happy");
+                }
+            }
+        } catch (Exception e) { reply(host, "I couldn't get to your " + label + ".", "shrug", "sad"); }
+    }
+
+    /** A particular song or video: the chosen app's search (YouTube, YouTube Music, Spotify), else the phone's music app. */
+    private void playMedia(String query, String where, Host host) {
+        if (query == null || query.trim().isEmpty()) { media("play", host); return; }
+        Intent i;
+        switch (where) {
+            case "spotify": i = new Intent(Intent.ACTION_VIEW, Uri.parse("spotify:search:" + Uri.encode(query))); break;
+            case "youtube_music": i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://music.youtube.com/search?q=" + Uri.encode(query))); break;
+            case "youtube": i = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query))); break;
+            default:
+                i = new Intent(android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH).putExtra(android.app.SearchManager.QUERY, query)
+                    .putExtra(android.provider.MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*");
+        }
+        boolean ok = open(host, i);
+        if (!ok && "spotify".equals(where)) ok = open(host, new Intent(Intent.ACTION_VIEW, Uri.parse("https://open.spotify.com/search/" + Uri.encode(query))));
+        if (!ok) ok = open(host, new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(query))));
+        if (ok) reply(host, "Playing " + query + "!", "dance", "happy");
+        else reply(host, "I couldn't find an app to play that.", "shrug", "sad");
+    }
+
+    private void camera(String mode, Host host) {
+        Intent i = new Intent("video".equals(mode) ? android.provider.MediaStore.INTENT_ACTION_VIDEO_CAMERA : android.provider.MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA);
+        if ("selfie".equals(mode)) i.putExtra("android.intent.extras.CAMERA_FACING", 1).putExtra("android.intent.extras.LENS_FACING_FRONT", 1).putExtra("android.intent.extra.USE_FRONT_CAMERA", true);
+        if (open(host, i)) reply(host, "selfie".equals(mode) ? "Selfie time! Say cheese!" : "video".equals(mode) ? "Camera's rolling!" : "Say cheese!", "jump", "happy");
+        else reply(host, "I couldn't open the camera.", "shrug", "sad");
     }
 
     /** Starts the floating Sweety if Android allows (display over other apps is on). */

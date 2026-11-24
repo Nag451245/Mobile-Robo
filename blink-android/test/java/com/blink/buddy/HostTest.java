@@ -225,6 +225,15 @@ public class HostTest {
         a = g.ask("What did I just ask?", memory);
         check(a != null && a.text.toLowerCase(java.util.Locale.ROOT).contains("what's my name"), "keeps the conversation going: " + (a == null ? g.lastError : a.text));
 
+        // Live questions go to Google Search; a key without Search still gets an answer (and Search rests for a while)
+        a = g.ask("What's the weather in Bengaluru today?", memory);
+        check(a != null && a.text.contains("sunny") && !g.searchRefused, "a live question is answered with Google Search: " + (a == null ? g.lastError : a.text));
+        a = g.ask("Any news today?", memory);
+        check(a != null && a.text.contains("couldn't search") && g.searchRefused && !kv.getOrDefault("gemini_search_off_until", "0").equals("0"),
+            "when Google won't search for this key she still answers, and leaves Search alone for a while: " + (a == null ? g.lastError : a.text));
+        a = g.ask("What's the weather tomorrow?", memory);
+        check(a != null && !a.text.contains("sunny"), "...so the next live question doesn't try Search again: " + (a == null ? g.lastError : a.text));
+        kv.remove("gemini_search_off_until");
         a = g.ask("Catch the butterfly please", memory);
         check(a != null && a.calls.size() == 1 && "catch".equals(a.calls.get(0).args.optString("action")), "can start a trick: " + (a == null ? g.lastError : a.calls.isEmpty() ? "(none)" : a.calls.get(0).args));
 
@@ -238,6 +247,41 @@ public class HostTest {
             @Override public void put(String k, String v) { }
         }, base);
         check(!nokey.configured() && nokey.ask("hi", memory) == null, "without a key she doesn't call Gemini at all");
+    }
+
+    /** The newer phone actions (docs/requirements.md, section 3): what each sentence becomes, offline, with no brain. */
+    static void actions() {
+        String[][] cases = { // sentence, action, a word its arguments must contain (or "")
+            {"Open YouTube", "open_app", "youtube"}, {"Hey Sweety, launch the calculator app", "open_app", "calculator"}, {"open whatsapp please", "open_app", "whatsapp"},
+            {"Navigate to the airport", "navigate", "airport"}, {"take me home", "navigate", "home"}, {"directions to Central Mall by bus", "navigate", "transit"},
+            {"How do I get to MG Road", "navigate", "mg road"}, {"find the nearest petrol station", "navigate", "petrol station"}, {"restaurants near me", "navigate", "restaurants"},
+            {"search for cheap flights to Goa", "web_search", "cheap flights to goa"}, {"google how tall is Mount Everest", "web_search", "everest"}, {"look up the meaning of serendipity", "web_search", "serendipity"},
+            {"turn on wifi", "phone_setting", "wifi"}, {"Switch off Bluetooth", "phone_setting", "bluetooth"}, {"turn on airplane mode", "phone_setting", "airplane"},
+            {"open settings", "phone_setting", "all"}, {"turn up the brightness", "phone_setting", "brightness"}, {"turn on mobile data", "phone_setting", "mobile_data"},
+            {"turn on do not disturb", "do_not_disturb", "true"}, {"turn off do not disturb", "do_not_disturb", "false"}, {"silence my phone", "do_not_disturb", "true"},
+            {"start the stopwatch", "stopwatch", "start"}, {"stop the stopwatch", "stopwatch", "stop"}, {"reset the stopwatch", "stopwatch", "reset"}, {"how long on the stopwatch", "stopwatch", "read"},
+            {"find my phone", "find_phone", ""}, {"where's my phone", "find_phone", ""}, {"ring my phone", "find_phone", ""},
+            {"add milk and eggs to my shopping list", "list", "milk and eggs"}, {"put call the bank on my to do list", "list", "call the bank"},
+            {"what's on my shopping list", "list", "read"}, {"read my to-do list", "list", "todo"}, {"remove milk from the shopping list", "list", "remove"}, {"clear my shopping list", "list", "clear"},
+            {"take a selfie", "camera", "selfie"}, {"open the camera", "camera", "photo"}, {"take a video", "camera", "video"},
+            {"play Shape of You on YouTube", "play_media", "shape of you"}, {"play lofi beats on spotify", "play_media", "spotify"}, {"play Believer by Imagine Dragons", "play_media", "believer by imagine dragons"},
+            // the older actions keep their meaning
+            {"play music", "media_control", "play"}, {"call mom", "call_contact", "mom"}, {"turn on the torch", "flashlight", "true"},
+            {"start a timer for 5 minutes", "set_timer", "5"}, {"set an alarm for 7 am", "set_alarm", "7"}, {"stop the music", "media_control", "pause"},
+            {"what's my battery", "phone_status", "battery"}, {"take a note buy milk", "take_note", "buy milk"}, {"hide", "sweety_fun", "hide"},
+            {"Hey Buddy, what time is it", "phone_status", "time"},
+        };
+        for (String[] c : cases) {
+            Call call = new RuleBrain().parse(c[0]);
+            String got = call == null ? "none" : call.name + " " + call.args;
+            boolean ok = call != null && call.name.equals(c[1]) && got.toLowerCase(java.util.Locale.ROOT).contains(c[2]);
+            if (ok && Call.EXTRA.contains(call.name)) ok = RuleBrain.decide(new Call("media_control", null, .99f, "needle3"), call, c[0]) == call;
+            check(ok, "action [" + c[0] + "] -> " + got + (ok ? "" : "   expected " + c[1] + " " + c[2]));
+        }
+        for (String chat : new String[]{"What is the capital of France?", "I love you", "tell me about the moon", "how are you"}) {
+            Call call = new RuleBrain().parse(chat);
+            check(call == null, "chat stays chat: [" + chat + "] -> " + (call == null ? "none" : call.name));
+        }
     }
 
     /** Continuous conversation: which replies end it (and how), and which must not (docs/requirements.md, C2). */
@@ -374,6 +418,7 @@ public class HostTest {
 
         dayTime();
         conversation();
+        actions();
         tricks();
         chase("butterfly");
         chase("bird");

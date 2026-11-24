@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Trains Sweety's own "Hey Sweety" wake-word model (openWakeWord style) on synthetic and public speech.
+"""Trains Sweety's own wake-word models, "Hey Sweety" and "Hey Buddy" (openWakeWord style), on synthetic and public speech.
+
+  train.py --word sweety|buddy --work work --out out
 
 How it works
   openWakeWord's approach: audio becomes speech features with two shared models (a mel spectrogram and Google's
@@ -14,7 +16,7 @@ Data (all permissively licensed)
   - Real everyday speech from LibriSpeech (CC BY 4.0): dev-clean to learn from, test-clean to count false wake-ups.
   - Room echo, phone-mic tone, quiet/far speech, and noise (hiss, rumble, babble), all made here in code.
 
-Output (in --out): hey_sweety.onnx (input [1,16,96] -> score 0..1), metrics.json, report.txt
+Output (in --out): hey_sweety.onnx or hey_buddy.onnx (input [1,16,96] -> score 0..1), metrics.json, report.txt
 """
 import argparse, glob, json, os, random, subprocess, sys, tarfile, time, urllib.request, wave
 
@@ -30,7 +32,22 @@ NEAR_MISSES = ["sweaty", "it was hot and sweaty", "those sweaty socks", "sweater
                "sweet", "sweetest", "hey sweet", "hey city", "hey Swati", "my sister Swati", "hey Siri", "hey Steve",
                "hey seedy", "pretty", "twenty", "hey there", "okay Google", "hey sweetheart", "hello sweetheart",
                "sweet pea", "Swiss tea", "the suite", "hey sweater", "sweeties", "hey Sweden", "see you sweety pie",
-               "hey Suzy", "hey Sid", "OK computer", "hello city", "hi Steve", "hey Sweeney"]
+               "hey Suzy", "hey Sid", "OK computer", "hello city", "hi Steve", "hey Sweeney",
+               # CI once saw "I love eating sweets" (in noise) wake her: sweets and treats are near misses too
+               "I love eating sweets", "sweets", "I bought sweets", "candy and sweets", "sweet treats", "so sweet of you",
+               "sweetie pie", "you're so sweet", "sweet dreams", "a sweet tooth"]
+
+# "Hey Buddy": the second wake word. Its near misses: words that sound like buddy, and buddy in ordinary sentences.
+POSITIVE_BUDDY = ["hey buddy", "hey buddy", "hey buddy", "hi buddy", "hello buddy", "okay buddy", "ok buddy", "hey buddy!"]
+NEAR_MISSES_BUDDY = ["body", "anybody", "nobody", "somebody", "everybody", "hey body", "hey everybody", "hey nobody",
+                     "muddy", "bloody", "study", "hey Judy", "hey Rudy", "hey Teddy", "hey baby", "hey daddy", "hey Betty",
+                     "hey birdie", "hey bunny", "hey Buddha", "hey bud", "my buddy", "my best buddy", "study buddy",
+                     "the buddy system", "puddle", "cuddly", "hey kiddo", "hey Bobby", "hey Bob", "hey Andy", "hey Danny",
+                     "hey Siri", "okay Google", "hey there", "hey Alexa", "a bloody mess", "muddy boots", "body language"]
+WORDS = {
+    "sweety": {"positive": POSITIVE, "near": NEAR_MISSES, "file": "hey_sweety.onnx", "name": "Hey Sweety"},
+    "buddy": {"positive": POSITIVE_BUDDY, "near": NEAR_MISSES_BUDDY, "file": "hey_buddy.onnx", "name": "Hey Buddy"},
+}
 LIBRISPEECH = "https://www.openslr.org/resources/12/{}.tar.gz"
 # Big negatives: LibriSpeech train-clean-100 (CC BY 4.0), streamed straight from the archive (never unpacked)
 BIG_NEGATIVES = ["https://us.openslr.org/resources/12/train-clean-100.tar.gz",
@@ -288,6 +305,7 @@ def count_wakes(scores, thr, refractory=25):
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--word", default="sweety", choices=sorted(WORDS))
     ap.add_argument("--work", default="work")
     ap.add_argument("--out", default="out")
     ap.add_argument("--positives", type=int, default=700, help="samples per wake phrase")
@@ -296,6 +314,8 @@ def main():
     ap.add_argument("--steps", type=int, default=30000)
     ap.add_argument("--neg-hours", type=float, default=100, help="hours of everyday speech to learn 'not Hey Sweety' from")
     args = ap.parse_args()
+    word = WORDS[args.word]
+    log("training", word["name"])
     os.makedirs(args.work, exist_ok=True); os.makedirs(args.out, exist_ok=True)
     rng = np.random.default_rng(1)
     random.seed(1)
@@ -311,8 +331,8 @@ def main():
     fetch(GENERATOR_CONFIG, gen + ".json")  # the generator needs its config next to it
 
     log("synthetic speech")
-    pos = generate(gen, POSITIVE, args.positives, os.path.join(args.work, "pos"), "p")
-    near = generate(gen, NEAR_MISSES, args.near, os.path.join(args.work, "near"), "n")
+    pos = generate(gen, word["positive"], args.positives, os.path.join(args.work, args.word, "pos"), "p")
+    near = generate(gen, word["near"], args.near, os.path.join(args.work, args.word, "near"), "n")
     reqs = [a for _, a in generate(gen, REQUESTS, args.requests, os.path.join(args.work, "req"), "r")]
     log(f"{len(pos)} wake clips, {len(near)} near misses, {len(reqs)} requests")
     dev = librispeech(args.work, "dev-clean")
@@ -416,7 +436,7 @@ def main():
         train(args.steps // 2, hard)
 
     model.eval()
-    onnx_path = os.path.join(args.out, "hey_sweety.onnx")
+    onnx_path = os.path.join(args.out, word["file"])
     torch.onnx.export(model, torch.zeros(1, 16, 96), onnx_path, input_names=["input"], output_names=["output"],
                       dynamic_axes={"input": {0: "batch"}, "output": {0: "batch"}}, opset_version=13, dynamo=False)  # the classic exporter: a plain graph onnxruntime-android runs
     head = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
@@ -434,9 +454,9 @@ def main():
     ok = [r for r in rows if r["false_wakes_per_hour"] <= 0.5] or rows[-1:]
     best = ok[0]
     metrics = {"threshold": best["threshold"], "rows": rows, "train_wake": len(Xp), "train_other": len(Xn) + len(Xnear),
-               "test_speech_hours": hours, "generator_voices": 800}
+               "test_speech_hours": hours, "generator_voices": 800, "word": word["name"]}
     json.dump(metrics, open(os.path.join(args.out, "metrics.json"), "w"), indent=1)
-    lines = [f"threshold {r['threshold']:.1f}: held-out 'Hey Sweety' woken {r['wake_held_out']:.1%}, near misses woken "
+    lines = [f"threshold {r['threshold']:.2f}: held-out '{word['name']}' woken {r['wake_held_out']:.1%}, near misses woken "
              f"{r['near_miss_woken']:.1%}, false wake-ups {r['false_wakes_per_hour']:.2f}/hour of everyday speech" for r in rows]
     lines.append(f"CHOSEN threshold {best['threshold']}")
     open(os.path.join(args.out, "report.txt"), "w").write("\n".join(lines) + "\n")

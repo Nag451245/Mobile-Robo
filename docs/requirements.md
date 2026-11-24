@@ -13,9 +13,9 @@ Status legend: **Done** (in the app and tested in CI), **Built** (in the app on 
 | ID | Requirement | Status |
 |---|---|---|
 | W1 | "Hey Sweety" wakes her from any app while the screen is on and unlocked, without touching the phone. | Done |
-| W2 | **"Hey Buddy" is a second wake word**, equally reliable. Each wake word can be switched on or off in settings. | To do |
-| W3 | Each wake word has its own trained model (same pipeline as "Hey Sweety": `blink-android/wakeword/`), shipped only if it passes the gate: at least 80% of clearly spoken samples caught, at most 2 false wake-ups per hour of ordinary speech. | Done for Hey Sweety, to do for Hey Buddy |
-| W4 | Voice Match: the user records each wake word 4 times; her detector then also accepts the user's own way of saying it. | Done for Hey Sweety, to do for Hey Buddy |
+| W2 | **"Hey Buddy" is a second wake word**, equally reliable. Each wake word can be switched on or off in settings. | Built (settings switches; works through Voice Match until its trained model passes the gate) |
+| W3 | Each wake word has its own trained model (same pipeline as "Hey Sweety": `blink-android/wakeword/`), shipped only if it passes the gate: at least 80% of clearly spoken samples caught, at most 2 false wake-ups per hour of ordinary speech. | Done for Hey Sweety; Hey Buddy training (with its own near misses) is running |
+| W4 | Voice Match: the user records each wake word 4 times; her detector then also accepts the user's own way of saying it. | Done for Hey Sweety, built for Hey Buddy |
 | W5 | One breath: "Hey Sweety, what time is it?" said without pausing works; the request isn't cut off. | Done |
 | W6 | Wake response under 300 ms: a short time-of-day chirp, her card pops up, the mic stays open (never reopened). | Done |
 | W7 | Mic only while the screen is on and unlocked, with a notification showing; closes when the screen turns off or locks. | Done |
@@ -50,7 +50,7 @@ Once woken, Sweety stays in the conversation. The user does not say the wake wor
 | B2 | **Big offline brain: Gemma 4 E2B** (Google, Apache-2.0, about 2.6 GB, one-time download on Wi-Fi). Offered on phones with 6 GB+ RAM and 3 GB free storage. Runs on the GPU when possible, else on the CPU. Streams its answer so she starts speaking at the first sentence. Used when there's no internet or no Gemini key. | Built (not yet run on a phone; too big for the CI emulator) |
 | B3 | Small offline brain (Qwen3-0.6B, 330 MB) stays as the option for low-memory phones. The user can have either or both; the big one is used when present. | Done (small) |
 | B4 | Each offline brain runs in its own process; if it crashes on a phone, Sweety keeps working, and after repeated crashes she says so instead of trying forever. A GPU crash falls back to the CPU first. | Done (small), built (big) |
-| B5 | Current information (weather, news, scores, "what's happening") answered by Gemini with Google Search grounding. | To do |
+| B5 | Current information (weather, news, scores, "what's happening") answered by Gemini with Google Search grounding. | Built. Google refused Search on the test key (free tier, 429); she then answers without it, opens a web search, and rests Search for 6 hours |
 | B6 | Clear commands ("set an alarm for 7") run on the phone without any brain, instantly and offline. | Done |
 
 ## 3. Actions
@@ -61,16 +61,19 @@ Anything needing a new permission is opt-in and explained first.
 | Area | Actions | Status |
 |---|---|---|
 | Time | Alarms, timers, reminders | Done |
-| | List and cancel alarms, stopwatch, "how long is left on my timer" | To do |
+| | Stopwatch | Built |
+| | List and cancel alarms, "how long is left on my timer" | To do |
 | People | Call, text, WhatsApp a contact | Done |
 | Phone | Torch, media controls, volume, battery, time | Done |
-| | Open any app by name ("open YouTube"), Wi-Fi / Bluetooth / mobile data panels, Do Not Disturb on/off, brightness, rotation lock, battery saver, "find my phone" (rings loudly) | To do |
-| Out and about | Navigate to a place, find nearby places, "how long to get home" (opens Maps) | To do |
-| Look things up | Web search, define a word, translate, unit and currency conversion (exact for units) | To do |
-| Media | Play a song, artist or playlist on YouTube Music / Spotify / YouTube, take a photo or selfie (opens the camera) | To do |
+| | Open any app by name ("open YouTube"), Wi-Fi / Bluetooth / mobile data / airplane / hotspot / NFC / location / brightness / battery saver settings, Do Not Disturb on/off, "find my phone" (rings loudly) | Built |
+| | Rotation lock | To do |
+| Out and about | Navigate to a place, find nearby places (opens Maps) | Built |
+| Look things up | Web search | Built |
+| | Define a word, translate, unit and currency conversion (exact for units) | To do (Gemini answers these meanwhile) |
+| Media | Play a song, artist or playlist on YouTube Music / Spotify / YouTube, take a photo, selfie or video (opens the camera) | Built |
 | Calendar | "What's on today", add an event (opt-in calendar permission) | To do |
 | Notes and lists | Take a note, read notes | Done |
-| | Shopping and to-do lists: add, read back, clear | To do |
+| | Shopping and to-do lists: add, read back, remove, clear | Built |
 | Notifications | Read out new messages and reply by voice (opt-in notification access) | To do |
 | Routines | "Good morning": time, weather, today's events, first reminder. "Good night": alarm for tomorrow, Do Not Disturb on | To do |
 | Fun | Dances, tricks, outfits, catch the butterfly or bird | Done |
@@ -113,7 +116,7 @@ The desktop Sweety (`blink-desktop`, Electron) is the same assistant on the PC, 
 ## 7. Build order
 
 1. **Now (built, on the test branch):** continuous conversation (C1–C3, C6, C8), hiding (H1–H3), Gemma 4 E2B offline brain (B2, B4).
-2. **Next:** "Hey Buddy" model and Voice Match (W2–W4), with "sweets" / "sweet tea" style near misses as hard negatives for both wake words (CI once saw "I love eating sweets" in noise wake her); actions batch 1: open apps, Maps, web search, settings panels, Do Not Disturb, stopwatch, find my phone, lists; Gemini with Google Search (B5).
+2. **Next (built, on the test branch; models training):** "Hey Buddy" model and Voice Match (W2–W4), with "sweets" / "sweet tea" style near misses as hard negatives for both wake words (CI once saw "I love eating sweets" in noise wake her); actions batch 1: open apps, Maps, web search, settings panels, Do Not Disturb, stopwatch, find my phone, lists; Gemini with Google Search (B5).
 3. **Then:** barge-in with echo cancellation (C4, C7), calendar, notifications, routines.
 4. **Desktop:** D2–D7, reusing the phone's wake models, brains and action list.
 

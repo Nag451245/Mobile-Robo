@@ -28,7 +28,8 @@ class Wake:
         o = ort.SessionOptions(); o.intra_op_num_threads = 2
         self.mel = ort.InferenceSession(f"{d}/melspectrogram.onnx", o, providers=["CPUExecutionProvider"])
         self.emb = ort.InferenceSession(f"{d}/embedding_model.onnx", o, providers=["CPUExecutionProvider"])
-        self.head = ort.InferenceSession(f"{d}/hey_sweety.onnx", o, providers=["CPUExecutionProvider"])
+        self.name = os.environ.get("WAKE_NAME", "hey_sweety")  # which wake word's model: hey_sweety or hey_buddy
+        self.head = ort.InferenceSession(f"{d}/{self.name}.onnx", o, providers=["CPUExecutionProvider"])
         self.threshold = json.load(open(f"{d}/metrics.json"))["threshold"]
 
     def scores(self, audio, batch=512):
@@ -59,7 +60,7 @@ class Wake:
 
 def test(d, listfile, long_negative=None):
     wk = Wake(d)
-    print(f"Sweety's own Hey Sweety model, threshold {wk.threshold}")
+    print(f"Sweety's own {wk.name.replace('_', ' ').title()} model, threshold {wk.threshold}")
     wakes = ok = false = hwakes = hok = 0
     caught = []
     for line in open(listfile, encoding="utf-8"):
@@ -88,7 +89,7 @@ def test(d, listfile, long_negative=None):
         f.write("\n".join(caught) + "\n")
     rate = ok / wakes if wakes else 0
     print(f"through a phone mic or in a noisy room: {hok} of {hwakes} ({hok / max(hwakes, 1):.0%})")
-    print(f"wake word: {ok} of {wakes} clearly spoken 'Hey Sweety' clips detected ({rate:.0%}, need {NEED:.0%}); "
+    print(f"wake word: {ok} of {wakes} clearly spoken '{wk.name.replace('_', ' ').title()}' clips detected ({rate:.0%}, need {NEED:.0%}); "
           f"false wakes on ordinary sentences: {false} (need 0)")
     fails = int(rate < NEED) + int(false > 0)
     if long_negative and os.path.exists(long_negative):

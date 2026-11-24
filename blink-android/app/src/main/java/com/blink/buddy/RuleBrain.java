@@ -12,9 +12,11 @@ final class RuleBrain {
 
     Call parse(String raw) {
         String s = " " + raw.toLowerCase(Locale.ROOT).replaceAll("[?!,]", " ").replaceAll("\\s+", " ").trim() + " ";
-        s = s.replaceFirst("^ (hey |hi |ok |okay )?(sweety|sweetie|sweet)\\b", " ");
+        s = s.replaceFirst("^ (hey |hi |ok |okay )?(sweety|sweetie|sweet|buddy)\\b", " ").replaceAll("\\s+", " ");
         s = misheard(s);
         String orig = " " + raw.replaceAll("[?!,]", " ").replaceAll("\\s+", " ").trim() + " "; // keeps the user's capitals for message and note text
+        Call more = actions(s);
+        if (more != null) return more;
 
         // notes
         if (s.matches(".*\\b(read|show|what are|tell me) (me )?my notes.*")) return new Call("read_notes", null, 1, "rules");
@@ -111,6 +113,60 @@ final class RuleBrain {
         if (s.matches(".*\\b(spin|twirl)\\b.*")) return new Call("sweety_fun", Call.obj("action", "spin"), 1, "rules");
         if (s.matches(".*\\b(go to sleep|sleep|nap|good night|goodnight)\\b.*")) return new Call("sweety_fun", Call.obj("action", "sleep"), 1, "rules");
         if (s.matches(".*\\b(wave|say hi)\\b.*")) return new Call("sweety_fun", Call.obj("action", "wave"), 1, "rules");
+        // "open YouTube": last, so "open the camera" or "start a timer" are handled above
+        Matcher open = Pattern.compile("^ (?:please |can you |could you )?(?:open|launch|start|run)(?: up)? (?:the |my )?(.+?)(?: app| application)?(?: for me)?(?: please)? $").matcher(s);
+        if (open.find() && !open.group(1).matches(".*\\b(timer|alarm|stopwatch|music|song|dance|party|conversation|chat)\\b.*"))
+            return new Call("open_app", Call.obj("name", open.group(1).trim()), 1, "rules");
+        return null;
+    }
+
+    private static final String LIST = "(shopping|grocery|groceries|to ?do|to-do|todo)";
+
+    static String listName(String w) { return w.matches("shopping|grocery|groceries") ? "shopping" : "todo"; }
+
+    /** The newer phone actions (Call.EXTRA): checked first, as some share words with older ones ("ring my phone"). */
+    static Call actions(String s) {
+        if (s.matches(".*\\b(find my phone|where'?s my phone|where is my phone|ring my phone|i can'?t find my phone|make (a )?(loud )?(noise|sound) so i can find)\\b.*"))
+            return new Call("find_phone", null, 1, "rules");
+        if (s.matches(".*\\bstop ?watch\\b.*")) {
+            String a = s.matches(".*\\b(stop|pause|end|halt)\\b(?! ?watch).*|.*\\bstop the stop ?watch\\b.*") ? "stop"
+                : s.matches(".*\\b(reset|clear|restart)\\b.*") ? "reset"
+                : s.matches(".*\\b(how long|how much time|what'?s|what is|read|check|time on)\\b.*") ? "read" : "start";
+            return new Call("stopwatch", Call.obj("action", a), 1, "rules");
+        }
+        if (s.matches(".*\\b(do not disturb|don'?t disturb|dnd|silence (my )?(phone|notifications)|silent mode)\\b.*"))
+            return new Call("do_not_disturb", Call.obj("on", !s.matches(".*\\b(off|turn off|disable|end|stop|cancel|exit)\\b.*")), 1, "rules");
+        Matcher add = Pattern.compile("\\b(?:add|put)\\s+(.+?)\\s+(?:to|on|in)\\s+(?:my |the )?" + LIST + "(?: list)?\\b").matcher(s);
+        if (add.find()) return new Call("list", Call.obj("action", "add", "list", listName(add.group(2).replace(" ", "")), "item", add.group(1).trim()), 1, "rules");
+        Matcher rm = Pattern.compile("\\b(?:remove|take|cross|delete|tick)\\s+(.+?)\\s+(?:off|from|out of)\\s+(?:my |the )?" + LIST + "(?: list)?\\b").matcher(s);
+        if (rm.find()) return new Call("list", Call.obj("action", "remove", "list", listName(rm.group(2).replace(" ", "")), "item", rm.group(1).replaceAll("^off ", "").trim()), 1, "rules");
+        Matcher clr = Pattern.compile("\\b(?:clear|empty|delete|reset|wipe)\\s+(?:my |the )?" + LIST + " list\\b").matcher(s);
+        if (clr.find()) return new Call("list", Call.obj("action", "clear", "list", listName(clr.group(1).replace(" ", ""))), 1, "rules");
+        Matcher rd = Pattern.compile("\\b(?:what'?s|what is|read|show|tell me|check)(?: me)?(?: on| in)? (?:my |the )?" + LIST + " list\\b").matcher(s);
+        if (rd.find()) return new Call("list", Call.obj("action", "read", "list", listName(rd.group(1).replace(" ", ""))), 1, "rules");
+        if (s.matches(".*\\b(take|click|snap) (a |an )?(selfie|photo|picture|pic|video)\\b.*|.*\\b(open|start) (the )?(camera|selfie camera|front camera)\\b.*|^ selfie( time)? $"))
+            return new Call("camera", Call.obj("mode", s.matches(".*\\b(selfie|front)\\b.*") ? "selfie" : s.contains("video") ? "video" : "photo"), 1, "rules");
+        Matcher onApp = Pattern.compile("\\b(?:play|put on)\\s+(.+?)\\s+on\\s+(youtube music|youtube|spotify)\\b").matcher(s);
+        if (onApp.find()) return new Call("play_media", Call.obj("query", onApp.group(1).trim(), "app", onApp.group(2).replace(" ", "_")), 1, "rules");
+        Matcher song = Pattern.compile("\\b(?:play|put on)\\s+(?:the song |the track |the album |the playlist |song |some )?(.+?\\s+by\\s+.+?|.+?\\s+songs|the song .+)\\s*$").matcher(s);
+        if (song.find() && !song.group(1).matches("(music|some music|the music|it|something)")) return new Call("play_media", Call.obj("query", song.group(1).trim(), "app", "any"), 1, "rules");
+        Matcher nav = Pattern.compile("\\b(?:navigate|directions|take me|drive me|get me|route|how do i get|how to get|how can i get|show me the way)\\s+(?:me\\s+)?(?:to\\s+|back\\s+)?(home|work|the office|.+?)(?: please)?\\s*$").matcher(s);
+        if (nav.find() && !nav.group(1).isEmpty()) {
+            String mode = s.contains("walk") ? "walking" : s.matches(".*\\b(bus|train|metro|transit)\\b.*") ? "transit" : "driving";
+            return new Call("navigate", Call.obj("to", nav.group(1).replaceAll("\\s+(by|on) (foot|walking|bus|train|metro|car)$", "").trim(), "mode", mode), 1, "rules");
+        }
+        Matcher near = Pattern.compile("\\b(?:find |show me |search for |where'?s |where is |any )?(?:an? |the )?(?:nearest|closest|nearby)\\s+(.+?)\\s*$|^ (?:find |show me |search for |any )?(.+?)\\s+(?:near me|nearby|around here|close by)\\s*$").matcher(s);
+        if (near.find()) return new Call("navigate", Call.obj("to", (near.group(1) != null ? near.group(1) : near.group(2)).trim(), "nearby", true), 1, "rules");
+        Matcher search = Pattern.compile("\\b(?:search|google|look up|search the web for|search online for)\\s+(?:for\\s+)?(.+?)\\s*$").matcher(s);
+        if (search.find() && !s.contains("contact")) return new Call("web_search", Call.obj("query", search.group(1).trim()), 1, "rules");
+        Matcher set = Pattern.compile("\\b(wi-?fi|wifi|bluetooth|mobile data|cellular data|airplane mode|aeroplane mode|flight mode|hotspot|nfc|brightness|location|gps|battery saver|power saving|power saver)\\b").matcher(s);
+        if (set.find() && s.matches(".*\\b(turn|switch|open|enable|disable|on|off|settings?|connect|disconnect|increase|decrease|up|down|change|toggle|show)\\b.*")) {
+            String w = set.group(1);
+            String k = w.startsWith("wi") ? "wifi" : w.equals("bluetooth") ? "bluetooth" : w.contains("data") ? "mobile_data" : w.matches("(airplane|aeroplane|flight) mode") ? "airplane"
+                : w.equals("hotspot") ? "hotspot" : w.equals("nfc") ? "nfc" : w.equals("brightness") ? "brightness" : w.matches("location|gps") ? "location" : "battery_saver";
+            return new Call("phone_setting", Call.obj("setting", k), 1, "rules");
+        }
+        if (s.matches("^ (open |show )?(my |the )?(phone )?settings $")) return new Call("phone_setting", Call.obj("setting", "all"), 1, "rules");
         return null;
     }
 
@@ -120,7 +176,7 @@ final class RuleBrain {
      */
     /** Picks between Needle's call and the rules' call; null means "just chat". */
     static Call decide(Call needle, Call ruled, String text) {
-        if (ruled != null && ("ask".equals(ruled.name) || "read_notes".equals(ruled.name))) return ruled;
+        if (ruled != null && ("ask".equals(ruled.name) || "read_notes".equals(ruled.name) || Call.EXTRA.contains(ruled.name))) return ruled; // Needle doesn't know the newer actions
         // When no command words matched, Needle must be very sure, so small talk reaches the chat brain.
         float bar = ruled == null ? .8f : .45f;
         if (needle == null || needle.confidence < bar || !known(needle.name) || !plausible(needle.name, text)) return ruled;

@@ -34,6 +34,11 @@ def call(name, args, t=None):
 def answer(body):
     user = body["contents"][-1]["parts"][0]["text"].lower()
     system = body["systemInstruction"]["parts"][0]["text"]
+    searched = "google_search" in json.dumps(body.get("tools", []))
+    if "weather" in user:
+        return text("[nod|happy] It's sunny and 28 degrees in Bengaluru today." if searched else "[shrug|curious] I can't look that up right now!")
+    if "news" in user:
+        return text("[shrug|curious] I couldn't search just now, but I can tell you what I know!" if not searched else "[nod|happy] Searched news.")
     if "sky" in user:
         return text("[nod|happy] Sunlight scatters off the air, and blue light scatters the most, so the sky looks blue. Pretty, right?")
     if "remind" in user and "water" in user:
@@ -104,6 +109,11 @@ class H(BaseHTTPRequestHandler):
             self.send(503, {"error": {"code": 503, "status": "UNAVAILABLE",
                                       "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}})
             return
+        tools = json.dumps(body.get("tools", []))
+        if "google_search" in tools:  # like a free key without Search for "news" questions; with it for the weather
+            if "news" in body["contents"][-1]["parts"][0]["text"].lower():
+                self.send(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "You exceeded your current quota, please check your plan and billing details."}})
+                return
         thinking = body.get("generationConfig", {}).get("thinkingConfig", {})
         if "thinkingBudget" in thinking and "gemini-3" in self.path:  # like the real API: Gemini 3 takes a thinkingLevel
             self.send(400, {"error": {"code": 400, "message": "thinking_budget is not supported by this model, use thinking_level"}})

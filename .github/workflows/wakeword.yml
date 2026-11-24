@@ -1,13 +1,18 @@
-name: Train the Hey Sweety wake word
+name: Train the wake words (Hey Sweety, Hey Buddy)
 
-# Trains Sweety's own wake-word model (blink-android/wakeword/train.py) on synthetic voices and public speech, then
-# publishes it to the "hey-sweety-model" release, where the app build picks it up. Runs when the trainer changes.
+# Trains Sweety's own wake-word models (blink-android/wakeword/train.py) on synthetic voices and public speech, one
+# job per wake word, and publishes each to its release ("hey-sweety-model", "hey-buddy-model") only if it passes
+# the ship gate (wakeword/good_enough.py), where the app build picks it up. Runs when the trainer changes.
 on:
   push:
     paths:
       - blink-android/wakeword/**
       - .github/workflows/wakeword.yml
   workflow_dispatch:
+    inputs:
+      words:
+        description: "Wake words to train (JSON list)"
+        default: '["sweety", "buddy"]'
 
 permissions:
   contents: write
@@ -19,7 +24,11 @@ concurrency:
 jobs:
   train:
     runs-on: ubuntu-latest
-    timeout-minutes: 300
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        word: ${{ fromJSON(github.event.inputs.words || '["sweety", "buddy"]') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -49,34 +58,48 @@ jobs:
       - name: Train
         run: |
           set -o pipefail
-          if ! python blink-android/wakeword/train.py --work work --out out 2>&1 | tee train.log; then
+          if ! python blink-android/wakeword/train.py --word ${{ matrix.word }} --work work --out out 2>&1 | tee train.log; then
             tail -n 60 train.log > fail.txt
             bash blink-android/test/annotate.sh error "training failed: end of train.log" fail.txt 6000
             exit 1
           fi
+          cp work/melspectrogram.onnx work/embedding_model.onnx out/
+
+      - name: Good enough to ship?
+        id: gate
+        run: |
+          cp out/report.txt report.txt
+          if python blink-android/wakeword/good_enough.py out/metrics.json | tee -a report.txt; then echo "ship=yes" >> "$GITHUB_OUTPUT"
+          else echo "ship=no" >> "$GITHUB_OUTPUT"; fi
+          bash blink-android/test/annotate.sh notice "Hey ${{ matrix.word }}: training report" report.txt 4000
 
       - name: Publish the model
+        if: steps.gate.outputs.ship == 'yes'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: hey-sweety-model
-          name: Hey Sweety wake-word model
+          tag_name: hey-${{ matrix.word }}-model
+          name: Hey ${{ matrix.word }} wake-word model
           prerelease: true
           files: |
-            out/hey_sweety.onnx
+            out/hey_${{ matrix.word }}.onnx
             out/metrics.json
             out/report.txt
-            work/melspectrogram.onnx
-            work/embedding_model.onnx
+            out/melspectrogram.onnx
+            out/embedding_model.onnx
           body: |
-            Sweety's own "Hey Sweety" wake-word model, trained by `blink-android/wakeword/train.py` from commit ${{ github.sha }}.
-            `hey_sweety.onnx` takes 16 openWakeWord speech embeddings ([1,16,96]) and gives a 0-1 score; `metrics.json` holds the chosen threshold.
+            Sweety's own "Hey ${{ matrix.word }}" wake-word model, trained by `blink-android/wakeword/train.py --word ${{ matrix.word }}` from commit ${{ github.sha }}; it passed the ship gate (`good_enough.py`).
+            `hey_${{ matrix.word }}.onnx` takes 16 openWakeWord speech embeddings ([1,16,96]) and gives a 0-1 score; `metrics.json` holds the chosen threshold.
             Feature models: openWakeWord's `melspectrogram.onnx` and `embedding_model.onnx` (Google speech_embedding, Apache-2.0).
             Training data: piper-sample-generator (MIT) with its LibriTTS-R generator (CC BY 4.0), LibriSpeech (CC BY 4.0).
+
+      - name: Not good enough (the published model, if any, stays)
+        if: steps.gate.outputs.ship != 'yes'
+        run: echo "::warning::Hey ${{ matrix.word }} didn't pass the ship gate this time; the app keeps the model it has."
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: wakeword-training
+          name: wakeword-training-${{ matrix.word }}
           path: |
             train.log
             out/

@@ -45,5 +45,37 @@ final class Call {
         + "\"action\":{\"type\":\"string\",\"enum\":[\"dance\",\"wave\",\"jump\",\"spin\",\"flip\",\"cartwheel\",\"laugh\",\"joke\",\"sleep\",\"outfit\",\"catch\",\"hide\",\"show\"]},\"outfit\":{\"type\":\"string\",\"description\":\"Outfit name like kitty, bunny, panda, sunny\"},\"critter\":{\"type\":\"string\",\"enum\":[\"butterfly\",\"bird\"],\"description\":\"What to catch\"}},\"required\":[\"action\"]}}"
         + "]";
 
+    /**
+     * More phone actions (docs/requirements.md, section 3), for Gemini and the rules. Not given to the small
+     * offline Needle model, whose short tool list it was trained and tested on.
+     */
+    static final String EXTRA_TOOLS_JSON = "["
+        + "{\"name\":\"open_app\",\"description\":\"Open an app on the phone by its name, for example open YouTube or open the calculator\",\"parameters\":{\"type\":\"object\",\"properties\":{"
+        + "\"name\":{\"type\":\"string\",\"description\":\"The app's name\"}},\"required\":[\"name\"]}},"
+        + "{\"name\":\"navigate\",\"description\":\"Directions to a place in Maps, or find places nearby (restaurants, petrol stations, ATMs)\",\"parameters\":{\"type\":\"object\",\"properties\":{"
+        + "\"to\":{\"type\":\"string\",\"description\":\"The place, address, or home / work\"},\"nearby\":{\"type\":\"boolean\",\"description\":\"true to search for places of this kind nearby\"},"
+        + "\"mode\":{\"type\":\"string\",\"enum\":[\"driving\",\"walking\",\"transit\",\"bicycling\"]}},\"required\":[\"to\"]}},"
+        + "{\"name\":\"web_search\",\"description\":\"Search the web and show the results\",\"parameters\":{\"type\":\"object\",\"properties\":{"
+        + "\"query\":{\"type\":\"string\"}},\"required\":[\"query\"]}},"
+        + "{\"name\":\"phone_setting\",\"description\":\"Open a phone setting so the user can switch it: wifi, bluetooth, mobile data, airplane mode, hotspot, location, brightness, volume, battery saver, nfc, or all settings\",\"parameters\":{\"type\":\"object\",\"properties\":{"
+        + "\"setting\":{\"type\":\"string\",\"enum\":[\"wifi\",\"bluetooth\",\"mobile_data\",\"airplane\",\"hotspot\",\"location\",\"brightness\",\"volume\",\"battery_saver\",\"nfc\",\"all\"]}},\"required\":[\"setting\"]}},"
+        + "{\"name\":\"do_not_disturb\",\"description\":\"Turn Do Not Disturb (silence notifications and calls) on or off\",\"parameters\":{\"type\":\"object\",\"properties\":{"
+        + "\"on\":{\"type\":\"boolean\"}},\"required\":[\"on\"]}},"
+        + "{\"name\":\"stopwatch\",\"description\":\"Start, stop, reset or read a stopwatch\",\"parameters\":{\"type\":\"object\",\"properties\":{"
+        + "\"action\":{\"type\":\"string\",\"enum\":[\"start\",\"stop\",\"reset\",\"read\"]}},\"required\":[\"action\"]}},"
+        + "{\"name\":\"find_phone\",\"description\":\"Ring the phone loudly so the user can find it\",\"parameters\":{\"type\":\"object\",\"properties\":{}}},"
+        + "{\"name\":\"list\",\"description\":\"The user's shopping list or to-do list: add items, read it, remove an item, or clear it\",\"parameters\":{\"type\":\"object\",\"properties\":{"
+        + "\"action\":{\"type\":\"string\",\"enum\":[\"add\",\"read\",\"remove\",\"clear\"]},\"list\":{\"type\":\"string\",\"description\":\"shopping or todo\"},"
+        + "\"item\":{\"type\":\"string\",\"description\":\"What to add or remove; several items separated by commas\"}},\"required\":[\"action\",\"list\"]}},"
+        + "{\"name\":\"play_media\",\"description\":\"Play a particular song, artist, playlist, podcast or video, on YouTube, YouTube Music or Spotify\",\"parameters\":{\"type\":\"object\",\"properties\":{"
+        + "\"query\":{\"type\":\"string\"},\"app\":{\"type\":\"string\",\"enum\":[\"youtube\",\"youtube_music\",\"spotify\",\"any\"]}},\"required\":[\"query\"]}},"
+        + "{\"name\":\"camera\",\"description\":\"Open the camera to take a photo, a selfie or a video\",\"parameters\":{\"type\":\"object\",\"properties\":{"
+        + "\"mode\":{\"type\":\"string\",\"enum\":[\"photo\",\"selfie\",\"video\"]}}}}"
+        + "]";
+
+    /** The action names in EXTRA_TOOLS_JSON. */
+    static final java.util.List<String> EXTRA = java.util.Arrays.asList("open_app", "navigate", "web_search", "phone_setting",
+        "do_not_disturb", "stopwatch", "find_phone", "list", "play_media", "camera");
+
     static final String SYSTEM_PROMPT = "You are Sweety, a cute robot assistant on an Android phone. Pick the tool that does what the user asks.";
 }

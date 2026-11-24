@@ -29,15 +29,22 @@ final class VoiceMatch {
     private int cooldown;
     private float best = 9; // closest match since the last status line
 
-    static File file(Context c) { return new File(c.getFilesDir(), "voicematch.json"); }
-    static boolean enrolled(Context c) { return file(c).exists(); }
+    /** Which wake word these recordings are of: "sweety" (Hey Sweety) or "buddy" (Hey Buddy). */
+    final String word;
+    VoiceMatch() { this("sweety"); }
+    VoiceMatch(String word) { this.word = word; }
+
+    static File file(Context c) { return file(c, "sweety"); }
+    static File file(Context c, String word) { return new File(c.getFilesDir(), "sweety".equals(word) ? "voicematch.json" : "voicematch-" + word + ".json"); }
+    static boolean enrolled(Context c) { return enrolled(c, "sweety"); }
+    static boolean enrolled(Context c, String word) { return file(c, word).exists(); }
 
     /** Loads the saved templates; false if the user hasn't set up Voice Match. */
     boolean load(Context c) {
         templates.clear();
         try {
-            if (!enrolled(c)) return false;
-            JSONArray ts = new JSONObject(new String(java.nio.file.Files.readAllBytes(file(c).toPath()), "UTF-8")).getJSONArray("templates");
+            if (!enrolled(c, word)) return false;
+            JSONArray ts = new JSONObject(new String(java.nio.file.Files.readAllBytes(file(c, word).toPath()), "UTF-8")).getJSONArray("templates");
             for (int i = 0; i < ts.length(); i++) {
                 JSONArray t = ts.getJSONArray(i);
                 float[][] frames = new float[t.length()][];
@@ -49,7 +56,7 @@ final class VoiceMatch {
                 if (frames.length >= 3) templates.add(frames);
             }
             reset();
-            Log.i(TAG, "Voice Match ready: " + templates.size() + " samples of your voice");
+            Log.i(TAG, "Voice Match (" + word + ") ready: " + templates.size() + " samples of your voice");
             return !templates.isEmpty();
         } catch (Exception e) {
             Log.w(TAG, "Voice Match couldn't load", e);
@@ -129,17 +136,20 @@ final class VoiceMatch {
     }
 
     /** Saves the templates (replacing any earlier Voice Match). */
-    static void save(Context c, List<float[][]> ts) throws Exception {
+    static void save(Context c, List<float[][]> ts) throws Exception { save(c, "sweety", ts); }
+
+    static void save(Context c, String word, List<float[][]> ts) throws Exception {
         JSONArray all = new JSONArray();
         for (float[][] t : ts) {
             JSONArray frames = new JSONArray();
             for (float[] v : t) { JSONArray row = new JSONArray(); for (float x : v) row.put((double) x); frames.put(row); }
             all.put(frames);
         }
-        java.nio.file.Files.write(file(c).toPath(), new JSONObject().put("templates", all).put("distance", DISTANCE).toString().getBytes("UTF-8"));
+        java.nio.file.Files.write(file(c, word).toPath(), new JSONObject().put("templates", all).put("distance", DISTANCE).toString().getBytes("UTF-8"));
     }
 
-    static void forget(Context c) { file(c).delete(); }
+    static void forget(Context c) { forget(c, "sweety"); }
+    static void forget(Context c, String word) { file(c, word).delete(); }
 
     /** Trims a recording to the spoken part (plus 100 ms each side); null if there's hardly any speech. */
     static float[] spoken(float[] pcm) {
