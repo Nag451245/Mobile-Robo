@@ -32,7 +32,7 @@ import android.widget.Toast;
 /** Sweety's home: talk to her, preview her nature scenes, start floating Sweety, set the wallpaper, tune moments. */
 public class MainActivity extends Activity implements Assistant.Host, Ears.Callback {
     private static final int REQ_MIC = 21, REQ_CONTACT = 22, REQ_WAKE = 23;
-    private TextView brainLine, chatInfo, wakeInfo;
+    private TextView brainLine, wakeInfo;
     private final android.os.Handler ui = new android.os.Handler(android.os.Looper.getMainLooper());
 
     /** Live line under the Hey Sweety switch: what the listener is doing and the last thing it heard. */
@@ -59,7 +59,8 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         });
     }
     private CheckBox wakeBox;
-    private Button chatBtn, removeChatBtn;
+    private final Button[] chatBtns = new Button[ChatBrain.ALL.length], removeChatBtns = new Button[ChatBrain.ALL.length];
+    private final TextView[] chatInfos = new TextView[ChatBrain.ALL.length];
     private float dp;
     private SharedPreferences prefs;
     private BlinkView preview;
@@ -172,22 +173,41 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         assistant.setOnClickListener(v -> makeAssistant());
         col.addView(assistant, full(px(8)));
 
+        // Continuous conversation: no wake word for every question
+        col.addView(header("Conversation"));
+        col.addView(text("Once you've called her, Sweety keeps listening after each answer, so you just keep talking, like a real assistant. "
+            + "Say \"stop\", \"that's all\" or \"bye\" to end it (or tap End). She also stops after a quiet spell.", 14, false));
+        CheckBox convoBox = new CheckBox(this); convoBox.setText("Keep the conversation going"); convoBox.setTextColor(0xFF2A1D40); convoBox.setTextSize(16);
+        convoBox.setChecked(prefs.getBoolean("convo_on", true));
+        convoBox.setOnCheckedChangeListener((b, on) -> prefs.edit().putBoolean("convo_on", on).apply());
+        col.addView(convoBox, full(px(6)));
+        col.addView(text("End the conversation after this much quiet:", 14, false));
+        String[][] quiet = {{"10", "10 s"}, {"20", "20 s"}, {"60", "1 min"}, {"0", "Only when I say stop"}};
+        col.addView(chipRow(quiet, id -> { prefs.edit().putInt("convo_idle_s", Integer.parseInt(id)).apply(); toast("Saved."); }));
+
         // Chat brain: a small offline language model for real conversations
-        col.addView(header("Offline chat brain (optional)"));
-        col.addView(text("For chatting without internet, Sweety can use a small brain on the phone (Qwen3-0.6B, about 330 MB, downloaded once on Wi-Fi). "
-            + "With Gemini set up you don't need it, except as a backup when you're offline.", 14, false));
-        chatBtn = button("Download offline chat brain (330 MB)", true);
-        chatBtn.setOnClickListener(v -> downloadChat());
-        col.addView(chatBtn, full(px(10)));
-        chatInfo = text("", 13, false);
-        col.addView(chatInfo);
-        removeChatBtn = button("Remove offline chat brain (frees about 330 MB)", false);
-        removeChatBtn.setOnClickListener(v -> {
-            long freed = Assistant.get(this).chatBrain().delete();
-            toast("Removed. Freed " + (freed >> 20) + " MB.");
-            refreshChat();
-        });
-        col.addView(removeChatBtn, full(px(6)));
+        col.addView(header("Offline brain (optional)"));
+        col.addView(text("For chatting without internet (or without a Gemini key), Sweety can think on the phone itself. Downloaded once; use Wi-Fi. "
+            + "If you have both, she uses the big one.", 14, false));
+        for (int i = 0; i < ChatBrain.ALL.length; i++) {
+            final int k = i;
+            ChatBrain.Model m = ChatBrain.ALL[i];
+            col.addView(text(m.big
+                ? "Big brain: " + m.name + " by Google, about " + m.size + ". Much smarter: explains, plans, helps you write and keeps up a real conversation. Needs a phone with 6 GB of memory or more; uses the phone's GPU when it can."
+                : "Small brain: " + m.name + ", about " + m.size + ". Fine for chit-chat on any phone.", 14, m.big));
+            chatBtns[i] = button("Download " + m.name + " (" + m.size + ")", m.big);
+            chatBtns[i].setOnClickListener(v -> downloadChat(k));
+            col.addView(chatBtns[i], full(px(8)));
+            chatInfos[i] = text("", 13, false);
+            col.addView(chatInfos[i]);
+            removeChatBtns[i] = button("Remove " + m.name + " (frees about " + m.size + ")", false);
+            removeChatBtns[i].setOnClickListener(v -> {
+                long freed = Assistant.get(this).chatBrain().delete(m);
+                toast("Removed. Freed " + (freed >> 20) + " MB.");
+                refreshChat();
+            });
+            col.addView(removeChatBtns[i], full(px(6)));
+        }
         refreshChat();
 
         // Smart brain: Gemini with the user's own free key
@@ -286,6 +306,9 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
             if (OverlayService.running) { stopService(new Intent(this, OverlayService.class)); startFloating(); }
             toast("Size saved.");
         }));
+        col.addView(text("When you say \"hide\" or \"disappear\", she vanishes completely and pops back by herself after:", 14, false));
+        String[][] hideFor = {{"5", "5 min"}, {"15", "15 min"}, {"30", "30 min"}, {"60", "1 hour"}};
+        col.addView(chipRow(hideFor, id -> { prefs.edit().putInt("hide_minutes", Integer.parseInt(id)).apply(); toast("Saved."); }));
 
         col.addView(header("Wallpaper (home and lock screen)"));
         col.addView(text("Sweety lives in a nature scene that matches her outfit: sunny sky with birds, meadow with butterflies, lavender sunset, bamboo forest, rainbow garden, snowy pines, starry night, candy balloons or the ocean.", 14, false));
@@ -485,17 +508,23 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
     private void refreshBrain() { if (brainLine != null) brainLine.setText(Assistant.get(this).brainStatus()); }
 
     private void refreshChat() {
-        if (chatBtn == null) return;
+        if (chatBtns[0] == null) return;
         ChatBrain cb = Assistant.get(this).chatBrain();
-        if (cb.downloaded()) {
-            chatBtn.setVisibility(View.GONE);
-            chatInfo.setText("Offline chat brain downloaded.");
-        } else if (!cb.downloading()) {
-            chatBtn.setVisibility(View.VISIBLE);
-            chatBtn.setEnabled(true);
-            chatInfo.setText("");
+        for (int i = 0; i < ChatBrain.ALL.length; i++) {
+            ChatBrain.Model m = ChatBrain.ALL[i];
+            boolean have = cb.downloaded(m);
+            if (have) {
+                chatBtns[i].setVisibility(View.GONE);
+                chatInfos[i].setText(m.name + " downloaded." + (cb.active() == m ? " Sweety thinks with it when Gemini can't answer." : ""));
+            } else if (!cb.downloading(m)) {
+                chatBtns[i].setVisibility(View.VISIBLE);
+                boolean fits = cb.fits(m);
+                chatBtns[i].setEnabled(fits);
+                chatInfos[i].setText(fits ? "" : "This phone has " + String.format(java.util.Locale.ROOT, "%.1f", ChatBrain.ramBytes(this) / 1e9)
+                    + " GB of memory; " + m.name + " needs about 6 GB. The small brain works on it.");
+            }
+            removeChatBtns[i].setVisibility(have ? View.VISIBLE : View.GONE);
         }
-        if (removeChatBtn != null) removeChatBtn.setVisibility(cb.downloaded() ? View.VISIBLE : View.GONE);
         refreshBrain();
     }
 
@@ -585,14 +614,17 @@ public class MainActivity extends Activity implements Assistant.Host, Ears.Callb
         }
     }
 
-    private void downloadChat() {
+    private void downloadChat(int k) {
         ChatBrain cb = Assistant.get(this).chatBrain();
+        ChatBrain.Model m = ChatBrain.ALL[k];
+        Button chatBtn = chatBtns[k];
+        TextView chatInfo = chatInfos[k];
         chatBtn.setEnabled(false);
         chatInfo.setText("Starting download…");
-        cb.download(new ChatBrain.Progress() {
+        cb.download(m, new ChatBrain.Progress() {
             @Override public void onProgress(long done, long total) {
                 long mb = done >> 20, all = total >> 20;
-                chatInfo.setText(total > 0 ? "Downloading… " + mb + " of " + all + " MB (" + (done * 100 / total) + "%)" : "Downloading… " + mb + " MB");
+                chatInfo.setText(total > 0 ? "Downloading… " + mb + " of " + all + " MB (" + (done * 100 / total) + "%). Keep the app open." : "Downloading… " + mb + " MB");
             }
             @Override public void onDone(boolean ok, String message) {
                 chatInfo.setText(message);

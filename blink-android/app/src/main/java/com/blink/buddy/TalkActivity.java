@@ -50,6 +50,15 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     private Assistant.NumberCallback contactCb;
     private float dp;
 
+    // Continuous conversation (docs/requirements.md, 1.2): after each answer she listens again, until the user
+    // says "stop" / "bye", stays quiet for a while, or an action takes them to another app.
+    private boolean convo;          // listen again after each answer
+    private boolean endAfterReply;  // "thanks" / "bye": she answers, then the conversation ends
+    private long quietSince;        // since when she has been listening again without hearing anything
+    private long freeSince;         // since when she has been done talking (a short grace before the mic reopens)
+    private final java.util.Random rnd = new java.util.Random();
+    private final Runnable nextTurn = this::nextTurn;
+
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
@@ -87,6 +96,10 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
         row.addView(input, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         LinearLayout.LayoutParams mp = new LinearLayout.LayoutParams(px(84), px(48)); mp.leftMargin = px(10);
         row.addView(mic, mp);
+        TextView end = new TextView(this); end.setText("End"); end.setTextColor(0xFF6A5F80); end.setTextSize(15); end.setGravity(Gravity.CENTER);
+        end.setOnClickListener(v -> endConversation(Conversation.stopLine(rnd), "End button"));
+        LinearLayout.LayoutParams ep = new LinearLayout.LayoutParams(px(56), px(48)); ep.leftMargin = px(4);
+        row.addView(end, ep);
 
         card.addView(title); card.addView(status); card.addView(heard); card.addView(row);
         FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM);
@@ -97,6 +110,7 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
         if (android.os.Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true); }
 
         ears = new Hearing(this, this);
+        startConversation();
         String handed = getIntent().getStringExtra(EXTRA_ASK);
         if (handed != null) { status.setText("One moment…"); ask(handed); return; }
         status.setText("Listening… try \"remind me in 10 minutes to drink water\"");
@@ -107,6 +121,7 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        startConversation();
         String handed = intent.getStringExtra(EXTRA_ASK);
         if (handed != null) { ask(handed); return; }
         status.setText("Listening…");
@@ -158,9 +173,69 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     }
 
     private void ask(String text) {
+        text = Conversation.withoutWakeWord(text);
         heard.setText("“" + text + "”");
         h.removeCallbacksAndMessages(null);
+        quietSince = 0;
+        Conversation.End end = Conversation.ending(text);
+        if (end == Conversation.End.STOP) { endConversation(Conversation.stopLine(rnd), "\"" + text + "\""); return; }
+        if (end == Conversation.End.FAREWELL) endAfterReply = true;
         Assistant.get(this).handle(text, this);
+        scheduleNextTurn(1500); // in case she answers without words (some actions)
+    }
+
+    /* ------------------------------------------------------------ continuous conversation */
+    private void startConversation() {
+        convo = getSharedPreferences("blink", MODE_PRIVATE).getBoolean("convo_on", true);
+        endAfterReply = false;
+        quietSince = 0;
+    }
+
+    /** Quiet this long while listening again ends the conversation (0: only when the user says so). */
+    private long idleLimitMs() { return getSharedPreferences("blink", MODE_PRIVATE).getInt("convo_idle_s", Conversation.DEFAULT_IDLE_S) * 1000L; }
+
+    private void scheduleNextTurn(long ms) { h.removeCallbacks(nextTurn); freeSince = 0; h.postDelayed(nextTurn, ms); }
+
+    /** Once she has really finished answering: listen again (in a conversation), or close the card. */
+    private void nextTurn() {
+        if (isFinishing()) return;
+        if (Assistant.get(this).busy() || ears.listening() || contactCb != null) { freeSince = 0; h.postDelayed(nextTurn, 300); return; }
+        long now = System.currentTimeMillis();
+        if (freeSince == 0) freeSince = now;
+        if (now - freeSince < 700) { h.postDelayed(nextTurn, 250); return; } // make sure she isn't just between sentences
+        freeSince = 0;
+        if (convo && !endAfterReply && !WakeService.cardGone) {
+            android.util.Log.i("SweetyTalk", "conversation: listening again");
+            if (quietSince == 0) quietSince = now;
+            status.setText(pickListening());
+            startListening();
+        } else {
+            if (convo) android.util.Log.i("SweetyTalk", "conversation: ended (" + (endAfterReply ? "goodbye" : "card left") + ")");
+            convo = false;
+            h.postDelayed(this::finish, 1200);
+        }
+    }
+
+    private String pickListening() {
+        String[] l = {"I'm listening…", "Go on, I'm listening…", "Anything else?", "What else?"};
+        return l[rnd.nextInt(l.length)];
+    }
+
+    /** Ends the conversation now (the user said stop, pressed End, or went quiet): back to waiting for the wake word. */
+    private void endConversation(String line, String why) {
+        android.util.Log.i("SweetyTalk", "conversation: ended (" + why + ")");
+        convo = false;
+        h.removeCallbacksAndMessages(null);
+        if (ears.listening()) ears.stop();
+        Assistant.get(this).stopTalking();
+        if (line != null) status.setText(line);
+        avatar.state("idle");
+        avatar.gesture("wave");
+        h.postDelayed(this::finish, line == null ? 400 : 1300);
+    }
+
+    private static boolean quiet(String problem) {
+        return problem != null && (problem.startsWith("I didn't catch") || problem.startsWith("I didn't hear"));
     }
 
     @Override
@@ -187,6 +262,14 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     }
     @Override public void onProblem(String message) {
         if (oneBreath) { oneBreath = false; startListening(); return; } // couldn't make out the kept request: listen instead
+        if (convo && quiet(message)) { // nothing said: keep listening, up to the quiet limit
+            long limit = idleLimitMs();
+            if (quietSince == 0) quietSince = System.currentTimeMillis();
+            if (limit > 0 && System.currentTimeMillis() - quietSince >= limit) { endConversation("Talk soon! Say \"Hey Sweety\" when you need me.", "quiet for " + (limit / 1000) + " s"); return; }
+            h.postDelayed(() -> { if (convo && !isFinishing()) startListening(); }, 250);
+            return;
+        }
+        convo = false; // a real problem: show it, and let the user tap Talk
         status.setText(message); avatar.state("idle"); avatar.mood("curious", 2.5f);
     }
 
@@ -213,16 +296,16 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     @Override public void say(String text) {
         status.setText(text);
         Bus.sweety(text, null, null);
-        h.postDelayed(this::closeWhenQuiet, Math.max(3500, text.length() * 75L));
-    }
-
-    /** Closes the card once she has finished talking (long answers in her natural voice take a while). */
-    private void closeWhenQuiet() {
-        if (Assistant.get(this).talking() || ears.listening()) h.postDelayed(this::closeWhenQuiet, 500);
-        else h.postDelayed(this::finish, 1200);
+        scheduleNextTurn(900);
     }
     @Override public void cue(String action, String emotion) {
         Bus.sweety(null, action, emotion);
+        if ("hide".equals(action)) { // hiding means nothing of hers stays on screen: the card goes too (her voice carries on)
+            android.util.Log.i("SweetyTalk", "conversation: ended (hiding)");
+            convo = false;
+            h.postDelayed(this::finish, 300);
+            return;
+        }
         if ("nod".equals(action) && "curious".equals(emotion)) { avatar.state("thinking"); return; } // "let me think"
         avatar.state("idle");
         avatar.gesture(action);
@@ -258,6 +341,13 @@ public class TalkActivity extends Activity implements Assistant.Host, Ears.Callb
     protected void onStop() {
         super.onStop();
         WakeService.cardGone = true; // closed or left: the wake listener stops recording a request for it
+        // Another app came up (a call, Maps, the screen turned off...): the conversation is over; the wake word still works.
+        if (convo && contactCb == null && !isFinishing()) {
+            android.util.Log.i("SweetyTalk", "conversation: ended (left the card)");
+            convo = false;
+            h.removeCallbacks(nextTurn);
+            if (ears.listening()) ears.stop();
+        }
     }
 
     @Override

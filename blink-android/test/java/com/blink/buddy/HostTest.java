@@ -240,6 +240,29 @@ public class HostTest {
         check(!nokey.configured() && nokey.ask("hi", memory) == null, "without a key she doesn't call Gemini at all");
     }
 
+    /** Continuous conversation: which replies end it (and how), and which must not (docs/requirements.md, C2). */
+    static void conversation() {
+        String[][] cases = {
+            {"stop", "STOP"}, {"Stop.", "STOP"}, {"okay stop", "STOP"}, {"Sweety, stop listening", "STOP"}, {"that's all", "STOP"},
+            {"That's it, thanks", "STOP"}, {"never mind", "STOP"}, {"cancel", "STOP"}, {"shut up", "STOP"}, {"I'm done", "STOP"},
+            {"no thanks", "STOP"}, {"nothing else", "STOP"}, {"hey buddy, stop", "STOP"}, {"OK, we're done.", "STOP"},
+            {"thanks", "FAREWELL"}, {"Thank you so much!", "FAREWELL"}, {"bye", "FAREWELL"}, {"Goodbye Sweety", "FAREWELL"},
+            {"good night", "FAREWELL"}, {"see you later", "FAREWELL"}, {"go to sleep", "FAREWELL"}, {"thanks, that's all", "FAREWELL"},
+            {"stop the music", "NO"}, {"stop the timer", "NO"}, {"cancel my alarm", "NO"}, {"what time is it", "NO"},
+            {"thanks, and what's the weather tomorrow", "NO"}, {"tell me about the stop sign", "NO"}, {"I'm done with my homework, what next?", "NO"},
+            {"say goodbye to grandma for me", "NO"}, {"", "NO"},
+        };
+        for (String[] c : cases) {
+            String got = Conversation.ending(c[0]).name();
+            check(got.equals(c[1]), "conversation [" + c[0] + "] -> " + got + (got.equals(c[1]) ? "" : "   expected " + c[1]));
+        }
+        String w = Conversation.withoutWakeWord("Hey Sweety, what time is it");
+        check("what time is it".equals(w), "the wake word said again mid-conversation is dropped: " + w);
+        w = Conversation.withoutWakeWord("Hey Buddy, call mom");
+        check("call mom".equals(w), "so is Hey Buddy: " + w);
+        check("what time is it".equals(Conversation.withoutWakeWord("what time is it")), "other sentences stay as they are");
+    }
+
     /** The new voice tricks: catch a butterfly or bird, hide, come back. */
     static void tricks() {
         String[][] cases = {
@@ -350,6 +373,7 @@ public class HostTest {
         wake("", null);
 
         dayTime();
+        conversation();
         tricks();
         chase("butterfly");
         chase("bird");

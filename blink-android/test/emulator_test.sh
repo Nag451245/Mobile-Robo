@@ -46,7 +46,7 @@ trap 'kill $LOGPID 2>/dev/null' EXIT
 trap 'echo "FAIL  the test ran past its time limit and was stopped (last log: $(tail -n 3 "$LOG" | sed -E "s/^.{0,40}\): //" | tr "\n" "|"))" >> "$SUM"; echo; echo "=========== SUMMARY ==========="; cat "$SUM"; exit 1' TERM
 
 write_prefs() { # write_prefs <wake true|false> <extra xml>: Sweety's settings (the app must not be running)
-  printf "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <boolean name=\"wake\" value=\"%s\" />\n    %s\n</map>\n" "$1" "$2" > "$OUT/blink.xml"
+  printf "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <boolean name=\"wake\" value=\"%s\" />\n    <int name=\"hide_minutes\" value=\"1\" />\n    %s\n</map>\n" "$1" "$2" > "$OUT/blink.xml"
   adb push "$OUT/blink.xml" /data/local/tmp/blink.xml >/dev/null
   adb shell run-as $PKG mkdir -p shared_prefs files
   adb shell run-as $PKG cp /data/local/tmp/blink.xml shared_prefs/blink.xml
@@ -150,6 +150,11 @@ elif setup "$APK_X86" false; then
   trick "Catch the bird" "catch the bird" "SweetyOverlay.*chase: done" 90 "^dodge caught free done"
   trick "Hide" "hide" "SweetyOverlay.*hiding" 30
   trick "Come back" "come back" "SweetyOverlay.*showing" 30
+  # Hidden means gone until called back or the hide time is up (1 minute here; 5 by default): she pops back by herself.
+  trick "Disappear" "disappear" "SweetyOverlay.*hiding for 60 s" 30
+  from=$(lines)
+  if wait_for "$from" "SweetyOverlay.*showing" 100; then pass "after hiding, she comes back by herself when the hide time is up"
+  else fail "she didn't come back by herself after hiding: $(found "$from" "SweetyOverlay" 4 | tr '\n' '|')"; fi
   adb shell am stopservice -n $PKG/.OverlayService >/dev/null 2>&1
 
   # Time of day: set the phone clock and check her greeting changes with it.
@@ -198,6 +203,16 @@ elif setup "$APK_X86" false; then
     gem "Why is the sky blue?" "Sunlight" "answers questions with Gemini"
     gem "Remind me to drink water when I get home" "remind you to drink water in 30 minutes" "Gemini turns a request into a phone action"
     gem "My name is Alex" "Nice to meet you" "tells her something about you"
+    # Continuous conversation: after her answer she listens again by herself (no wake word), and "stop" ends it.
+    from=$(lines)
+    adb shell am start -n $PKG/.TalkActivity --es ask "'Why is the sky blue?'" >/dev/null 2>&1
+    if wait_for "$from" "SweetyTalk.*conversation: listening again" 240; then pass "after answering she listens again by herself (continuous conversation)"
+    else fail "she didn't listen again after answering: $(found "$from" "SweetyTalk|Sweety .*reply" 5 | tr '\n' '|')"; fi
+    from=$(lines)
+    adb shell am start -n $PKG/.TalkActivity --es ask "'okay stop'" >/dev/null 2>&1
+    if wait_for "$from" "SweetyTalk.*conversation: ended" 30; then pass "\"okay stop\" ends the conversation: $(found "$from" "SweetyTalk.*conversation: ended")"
+    else fail "\"okay stop\" didn't end the conversation: $(found "$from" "SweetyTalk|Sweety " 5 | tr '\n' '|')"; fi
+    sleep 3
     gem "What is my name?" "Alex" "remembers it later"
     if [ -n "$MOCKLOG" ] && [ -f "$MOCKLOG/requests.jsonl" ]; then
       grep -q "set_alarm" "$MOCKLOG/requests.jsonl" && grep -q "Right now it is" "$MOCKLOG/requests.jsonl" \

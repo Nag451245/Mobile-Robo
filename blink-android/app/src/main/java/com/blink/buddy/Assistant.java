@@ -135,6 +135,11 @@ final class Assistant {
     /** True while Sweety is speaking, so the wake-word listener doesn't hear herself. */
     boolean talking() { return Sounds.playing() || voice.playing() || (ttsReady && tts.isSpeaking()); }
 
+    /** Working out or starting an answer (cleared once she starts saying it, or after 40 s at most). */
+    private volatile long thinkingSince;
+    /** True until her answer has been worked out and said: the talk card listens again only after that. */
+    boolean busy() { return talking() || thinkingSince > 0 && System.currentTimeMillis() - thinkingSince < 40_000; }
+
     /** True when Whistle is loaded, so Sweety can hear fully offline. */
     boolean localHearing() { return needle.speechReady(); }
 
@@ -236,6 +241,7 @@ final class Assistant {
     /** Understand and act on one sentence. Callbacks to the host happen on the main thread. */
     void handle(String text, Host host) {
         if (text == null || text.trim().isEmpty()) return;
+        thinkingSince = System.currentTimeMillis();
         // A plain "hi" or "good morning" gets an instant reply that fits the time of day.
         String[] greet = DayTime.greet(text, DayTime.hour(), DayTime.minute(), rnd);
         if (greet != null) { Log.i(TAG, "\"" + text + "\" => greeting"); main.post(() -> reply(host, greet[0], greet[1], greet[2])); return; }
@@ -306,7 +312,7 @@ final class Assistant {
             }
         }
 
-        void end() { if (stream != null) stream.close(); }
+        void end() { if (stream != null) stream.close(); if (started) thinkingSince = 0; }
     }
 
     /** What her voice should actually say: no "hehe"s or symbols. */
@@ -343,6 +349,7 @@ final class Assistant {
     private String pick(String... options) { return options[rnd.nextInt(options.length)]; }
 
     private void reply(Host host, String text, String action, String emotion) {
+        thinkingSince = 0;
         Log.i(TAG, "reply [" + action + "/" + emotion + "]: " + text);
         if (giggly(text) && ("nod".equals(action) || "wave".equals(action))) { action = "laugh"; emotion = "laugh"; }
         // After midnight her happy face is a sleepy one.
@@ -544,7 +551,11 @@ final class Assistant {
                 break;
             }
             case "hide":
-                if (OverlayService.running) reply(host, pick("Okay, I'll hide! Say Hey Sweety, come back when you miss me.", "Peekaboo, I'm hiding! Call me back anytime."), "hide", "happy");
+                if (OverlayService.running) {
+                    long min = OverlayService.hideMs(app) / 60_000L;
+                    reply(host, pick("Okay, I'll hide! I'll pop back in " + min + " minutes, or say Hey Sweety, come back.",
+                        "Peekaboo, I'm hiding! Back in " + min + " minutes, or call me sooner."), "hide", "happy");
+                }
                 else reply(host, "I'm already tucked away. Say come back and I'll pop out!", "nod", "happy");
                 break;
             case "show":
@@ -569,8 +580,16 @@ final class Assistant {
         // Facts about Sweety herself stay exact; everything else goes to the chat brain.
         if (s.contains("what can you do") || s.matches("\\W*(help|help me)\\W*") || !chatBrain.downloaded()) { canned(text, host); return; }
         chatWorker.execute(() -> {
-            String answer = chatBrain.reply(text);
+            // Like Gemini: the answer is spoken sentence by sentence as the offline brain writes it.
+            final Talk talk = new Talk(host);
+            final String[] gs = gestureFor(s);
+            final GeminiBrain.SentenceSplitter split = new GeminiBrain.SentenceSplitter((ge, em, sentence) ->
+                main.post(() -> talk.add(gs != null ? gs[0] : "nod", gs != null ? gs[1] : "happy", sentence)));
+            String answer = chatBrain.reply(text, piece -> { synchronized (split) { split.add(piece); } });
+            synchronized (split) { if (answer != null) split.finish(); }
+            main.post(talk::end);
             main.post(() -> {
+                if (talk.started) { Log.i(TAG, "reply (offline, streamed): " + answer); return; } // already said
                 if (answer == null) { Log.w(TAG, "chat brain gave no answer: " + chatBrain.status()); canned(text, host); return; }
                 String low = answer.toLowerCase(Locale.ROOT);
                 String emotion = low.contains("sorry") || low.contains(" sad") ? "sad"

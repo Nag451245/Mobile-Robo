@@ -54,6 +54,9 @@ import java.util.Random;
  */
 public class OverlayService extends Service implements SensorEventListener, Bus.Listener, Bus.SweetyListener {
     static final String ACTION_STOP = "com.blink.buddy.STOP_FLOATING";
+    static final String ACTION_SHOW = "com.blink.buddy.SHOW_FLOATING";
+    /** How long "hide" lasts before she pops back by herself (settable in the app; 5 minutes by default). */
+    static long hideMs(Context c) { return c.getSharedPreferences("blink", MODE_PRIVATE).getInt("hide_minutes", 5) * 60_000L; }
     static final String ACTION_HIDE = "com.blink.buddy.HIDE_FLOATING";
     static volatile boolean running;
 
@@ -148,27 +151,41 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
         if (ACTION_STOP.equals(a)) { stopSelf(); return START_NOT_STICKY; }
         if (!Settings.canDrawOverlays(this)) { stopSelf(); return START_NOT_STICKY; }
         if (root == null) setup();
-        if (ACTION_HIDE.equals(a)) hideFor(3600_000L);
+        if (ACTION_HIDE.equals(a)) hideFor(hideMs(this));
+        if (ACTION_SHOW.equals(a) && hidden) show();
         return START_STICKY;
     }
 
     private void startInForeground() {
         NotificationManager nm = getSystemService(NotificationManager.class);
         if (nm != null) nm.createNotificationChannel(new NotificationChannel(CHANNEL, "Floating Sweety", NotificationManager.IMPORTANCE_LOW));
+        Notification n = notification(0);
+        if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+        else startForeground(1, n);
+    }
+
+    /** The ongoing notification; while she hides (until `back`) it says when she'll be back, with a Come back button. */
+    private Notification notification(long back) {
         PendingIntent open = PendingIntent.getActivity(this, 0, new Intent(this, MainActivity.class), PendingIntent.FLAG_IMMUTABLE);
         PendingIntent hide = PendingIntent.getService(this, 1, new Intent(this, OverlayService.class).setAction(ACTION_HIDE), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         PendingIntent stop = PendingIntent.getService(this, 2, new Intent(this, OverlayService.class).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-        Notification n = new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(R.drawable.ic_blink)
-                .setContentTitle("Sweety is on your screen")
-                .setContentText("Long-press Sweety to talk. Tap here for settings.")
-                .setContentIntent(open)
-                .setOngoing(true)
-                .addAction(new Notification.Action.Builder(null, "Hide for 1 hour", hide).build())
-                .addAction(new Notification.Action.Builder(null, "Stop", stop).build())
-                .build();
-        if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-        else startForeground(1, n);
+        PendingIntent comeBack = PendingIntent.getService(this, 3, new Intent(this, OverlayService.class).setAction(ACTION_SHOW), PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
+        int minutes = (int) (hideMs(this) / 60_000L);
+        Notification.Builder b = new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_blink).setContentIntent(open).setOngoing(true);
+        if (back > 0) {
+            String at = android.text.format.DateFormat.getTimeFormat(this).format(new java.util.Date(back));
+            b.setContentTitle("Sweety is hiding, back at " + at).setContentText("Say \"Hey Sweety, come back\" or tap Come back.")
+             .addAction(new Notification.Action.Builder(null, "Come back", comeBack).build());
+        } else {
+            b.setContentTitle("Sweety is on your screen").setContentText("Long-press Sweety to talk. Tap here for settings.")
+             .addAction(new Notification.Action.Builder(null, "Hide for " + minutes + " min", hide).build());
+        }
+        return b.addAction(new Notification.Action.Builder(null, "Stop", stop).build()).build();
+    }
+
+    private void updateNotification() {
+        NotificationManager nm = getSystemService(NotificationManager.class);
+        if (nm != null) try { nm.notify(1, notification(hidden ? hideUntil : 0)); } catch (Exception ignored) { }
     }
 
     private int px(float v) { return Math.round(v * dp); }
@@ -521,6 +538,8 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
         hidden = true; hideUntil = System.currentTimeMillis() + ms;
         if (root != null) root.setVisibility(View.GONE);
         if (bubble != null) bubble.setVisibility(View.GONE);
+        Log.i("SweetyOverlay", "hiding for " + (ms / 1000) + " s");
+        updateNotification();
     }
 
     private void show() {
@@ -528,7 +547,8 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
         Log.i("SweetyOverlay", "showing");
         if (root != null && !landscapeHidden) root.setVisibility(View.VISIBLE);
         act("B.play('jump');B.emote('happy',2)");
-        say("I'm back!", 1800);
+        say(new String[]{"Peekaboo! I'm back!", "Did you miss me?", "Ta-da! Here I am!"}[rnd.nextInt(3)], 2200);
+        updateNotification();
     }
 
     /* ------------------------------------------------------------ touch: poke, double-tap, drag and throw, long-press */
@@ -622,9 +642,10 @@ public class OverlayService extends Service implements SensorEventListener, Bus.
             if ("show".equals(action)) { if (hidden) show(); else { act("B.play('wave');B.emote('happy',2)"); say("I'm right here!", 1800); } nextIdle = SystemClock.uptimeMillis() + 15000; return; }
             if (text != null) say(text, Math.max(2500, text.length() * 70L));
             if ("hide".equals(action)) {
-                // Wave goodbye first, then tuck away for 30 minutes (or until "Hey Sweety, come back").
+                // A quick wave, then gone completely until called back or the hide time is up (5 minutes by default).
+                if (bubble != null) bubble.setVisibility(View.GONE);
                 act("B.play('wave');B.emote('happy',2)");
-                h.postDelayed(() -> { hideFor(30 * 60_000L); Log.i("SweetyOverlay", "hiding"); }, 2200);
+                h.postDelayed(() -> hideFor(hideMs(this)), 900);
                 return;
             }
             if (action != null && action.startsWith("catch:")) { startChase(action.substring(6)); return; }
