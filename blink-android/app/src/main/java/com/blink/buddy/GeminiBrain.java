@@ -33,7 +33,18 @@ final class GeminiBrain {
 
     static final String DEFAULT_BASE = "https://generativelanguage.googleapis.com";
     /** Google's current free-tier Flash models (Nov 2026), tried when the key's own list can't be read or its pick fails. */
-    static final String[] KNOWN_MODELS = {"gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"};
+    static final String[] KNOWN_MODELS = {"gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-flash-lite-latest", "gemini-flash-latest"};
+    /** How long she keeps trying models for one question before giving up (she is talking to someone). */
+    static final long BUDGET_MS = 20_000;
+    /** A model that was overloaded or out of quota is left alone this long, so the next question goes straight to one that works. */
+    static final long BUSY_MS = 3 * 60_000L;
+    /** A Lite model that answered while the full ones were busy is used this long before the full ones get another go. */
+    static final long LITE_MS = 15 * 60_000L;
+    private final java.util.Map<String, Long> busyUntil = new java.util.concurrent.ConcurrentHashMap<>();
+    private String working;
+    private long workingUntil;
+    private List<String> listed;
+    private long listedAt;
     static final String FALLBACK_MODEL = KNOWN_MODELS[0];
     private static final Pattern TAG = Pattern.compile("^\\s*\\[\\s*([a-z]+)\\s*[|,/ ]\\s*([a-z]+)\\s*\\]\\s*", Pattern.CASE_INSENSITIVE);
     private static final String GESTURES = "wave,nod,dance,jump,spin,flip,cartwheel,laugh,shrug,stretch,sleep";
@@ -133,30 +144,63 @@ final class GeminiBrain {
     private Answer askNow(String text, List<String> memory) {
         if (!configured()) { lastError = "no Gemini key"; return null; }
         if (System.currentTimeMillis() - lastTurn > 30 * 60_000L) history.clear(); // a new chat after a long pause
+        // Like a real assistant's backend: Google's models are often overloaded ("high demand", 503) or hang, while
+        // others answer in a second. So each model gets a short timeout, a busy one is skipped for a few minutes,
+        // a retired one for good, and she moves straight on to the next (full and Lite Flash models alternate),
+        // within a time budget. The key itself being wrong stops at once.
+        long deadline = System.currentTimeMillis() + BUDGET_MS;
+        String[] firstFail = null, overloaded = null;
         try {
-            String model = model();
-            String[] res = generate(model, text, memory);
-            // The chosen model can fail for this key (not on the free tier, retired, overloaded) while others work:
-            // try the other Flash models it lists and Google's stable ones, and keep the first that answers.
-            if (!res[0].equals("200") && !keyRejected(res)) {
-                String first = describe(res);
-                for (String other : candidates()) {
-                    if (other.equals(model)) continue;
-                    String[] r2 = generate(other, text, memory);
-                    if (r2[0].equals("200")) { store.put("gemini_model", other); model = other; res = r2; break; }
-                    if (keyRejected(r2)) { res = r2; break; }
+            List<String> order = order();
+            for (int round = 0; round < 2; round++) {
+                for (String m : order) {
+                    if (System.currentTimeMillis() > deadline) break;
+                    Long b = busyUntil.get(m);
+                    if (round == 0 && b != null && b > System.currentTimeMillis()) continue; // busy: try it only if nothing else answers
+                    if (round == 1 && (b == null || b <= System.currentTimeMillis())) continue; // tried in the first round
+                    String[] res;
+                    try { res = generate(m, text, memory); }
+                    catch (java.io.IOException e) { res = new String[]{"timeout", e.getClass().getSimpleName()}; }
+                    if (res[0].equals("200")) {
+                        busyUntil.remove(m);
+                        if (isLite(m) && !isLite(model())) { working = m; workingUntil = System.currentTimeMillis() + LITE_MS; }
+                        else { store.put("gemini_model", m); working = null; }
+                        Answer a = parse(new JSONObject(res[1]));
+                        remember(text, a);
+                        lastError = null;
+                        return a;
+                    }
+                    if (keyRejected(res)) { lastError = describe(res); return null; }
+                    if (res[0].equals("404")) store.put("gemini_gone_" + m, "yes"); // retired or not for this key: never again
+                    else busyUntil.put(m, System.currentTimeMillis() + BUSY_MS);
+                    if (firstFail == null && !res[0].equals("404")) firstFail = res;
+                    if (overloaded == null && (res[0].equals("503") || res[0].equals("timeout"))) overloaded = res;
                 }
-                if (!res[0].equals("200")) { lastError = keyRejected(res) ? describe(res) : first; return null; }
+                if (System.currentTimeMillis() > deadline) break;
             }
-            if (!res[0].equals("200")) { lastError = describe(res); return null; }
-            Answer a = parse(new JSONObject(res[1]));
-            remember(text, a);
-            lastError = null;
-            return a;
+            String[] why = overloaded != null ? overloaded : firstFail;
+            lastError = why == null ? "none of Gemini's models answered" : describe(why);
+            return null;
         } catch (Exception e) {
             lastError = "can't reach Gemini (" + e.getClass().getSimpleName() + ")";
             return null;
         }
+    }
+
+    private static boolean isLite(String m) { return m.contains("lite"); }
+
+    /**
+     * The models to try for this question: the Lite one that just answered (while the full ones were busy), then
+     * the preferred one, then the key's other Flash models (full and Lite alternating) and Google's stable names.
+     */
+    List<String> order() {
+        java.util.LinkedHashSet<String> o = new java.util.LinkedHashSet<>();
+        if (working != null && System.currentTimeMillis() < workingUntil) o.add(working);
+        o.add(model());
+        o.addAll(candidates());
+        List<String> out = new ArrayList<>();
+        for (String m : o) if (!"yes".equals(store.get("gemini_gone_" + m, ""))) out.add(m);
+        return out;
     }
 
     /** One generateContent call; turns "thinking off" off for models that don't take it. */
@@ -186,8 +230,8 @@ final class GeminiBrain {
         HttpURLConnection c = (HttpURLConnection) new URL(base + path).openConnection();
         try {
             c.setRequestMethod("POST");
-            c.setConnectTimeout(10000);
-            c.setReadTimeout(30000);
+            c.setConnectTimeout(6000);
+            c.setReadTimeout(7000); // the first words come within a second or two; an overloaded model can hang for minutes
             c.setRequestProperty("x-goog-api-key", key());
             c.setDoOutput(true);
             c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
@@ -204,7 +248,7 @@ final class GeminiBrain {
             SentenceSplitter split = new SentenceSplitter(o);
             try (java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
                 String line;
-                while ((line = r.readLine()) != null) {
+                while ((line = readLine(r, text.length() > 0)) != null) {
                     if (!line.startsWith("data:")) continue;
                     JSONObject chunk = new JSONObject(line.substring(5).trim());
                     JSONArray cands = chunk.optJSONArray("candidates");
@@ -226,6 +270,15 @@ final class GeminiBrain {
                 .put("content", new JSONObject().put("role", "model").put("parts", parts))));
             return new String[]{"200", whole.toString()};
         } finally { c.disconnect(); }
+    }
+
+    /**
+     * The next streamed line. If the stream breaks after she has started speaking, the answer so far is kept (as the
+     * end of the stream) rather than asking another model, which would make her start the answer again.
+     */
+    private static String readLine(java.io.BufferedReader r, boolean started) throws java.io.IOException {
+        try { return r.readLine(); }
+        catch (java.io.IOException e) { if (started) return null; throw e; }
     }
 
     /** The end of a sentence: . ! ? or … (maybe a closing quote or bracket), then a space. */
@@ -281,15 +334,27 @@ final class GeminiBrain {
         return m.contains("api key") || m.contains("api_key") || m.contains("unauthenticated") || res[0].equals("401");
     }
 
-    /** Models to try: the Flash models this key lists (newest first), then Google's stable names. */
+    /**
+     * Models to try: the Flash models this key lists, newest first, full and Lite alternating (when the full ones
+     * are overloaded, a Lite one usually still answers in a second), then Google's stable names. The key's list is
+     * asked for at most once an hour.
+     */
     List<String> candidates() {
+        if (listed == null || System.currentTimeMillis() - listedAt > 60 * 60_000L) {
+            try {
+                String[] res = get("/v1beta/models?pageSize=200");
+                if (res[0].equals("200")) { listed = flashModels(new JSONObject(res[1]).optJSONArray("models")); listedAt = System.currentTimeMillis(); }
+            } catch (Exception ignored) { }
+        }
+        List<String> full = new ArrayList<>(), lite = new ArrayList<>();
+        if (listed != null) for (String m : listed) (isLite(m) ? lite : full).add(m);
         java.util.LinkedHashSet<String> out = new java.util.LinkedHashSet<>();
-        try {
-            String[] res = get("/v1beta/models?pageSize=200");
-            if (res[0].equals("200")) out.addAll(flashModels(new JSONObject(res[1]).optJSONArray("models")));
-        } catch (Exception ignored) { }
+        for (int i = 0; i < Math.max(full.size(), lite.size()); i++) {
+            if (i < full.size()) out.add(full.get(i));
+            if (i < lite.size()) out.add(lite.get(i));
+        }
         out.addAll(java.util.Arrays.asList(KNOWN_MODELS));
-        return new java.util.ArrayList<>(out).subList(0, Math.min(6, out.size()));
+        return new java.util.ArrayList<>(out).subList(0, Math.min(10, out.size()));
     }
 
     /** Plain Flash models (no lite, image, tts, live or preview), newest version first. */
@@ -332,6 +397,9 @@ final class GeminiBrain {
         switch (res[0]) {
             case "400": case "401": case "403": return msg.toLowerCase(Locale.ROOT).contains("key") ? "the Gemini key wasn't accepted" : "Gemini refused the request (" + res[0] + ": " + shorten(msg) + ")";
             case "429": return "Gemini's free limit is used up for now" + (msg.isEmpty() ? "" : " (" + shorten(msg) + ")");
+            case "402": return "Google says this key's project needs billing for these models (402 Payment Required)" + (msg.isEmpty() ? "" : ": " + shorten(msg));
+            case "503": return "Google's Gemini servers are overloaded right now (high demand), try again in a minute";
+            case "timeout": return "Gemini took too long to answer (Google's servers are busy or the internet is slow)";
             default: return "Gemini error " + res[0] + (msg.isEmpty() ? "" : ": " + shorten(msg));
         }
     }
@@ -425,8 +493,8 @@ final class GeminiBrain {
         HttpURLConnection c = (HttpURLConnection) new URL(base + path).openConnection();
         try {
             c.setRequestMethod(method);
-            c.setConnectTimeout(10000);
-            c.setReadTimeout(30000);
+            c.setConnectTimeout(6000);
+            c.setReadTimeout(10000); // an overloaded model can hang for a minute or more: move on instead
             c.setRequestProperty("x-goog-api-key", key()); // in a header, never in the URL
             if (body != null) {
                 c.setDoOutput(true);

@@ -12,6 +12,8 @@ MODELS = {"models": [
     {"name": "models/gemini-2.5-flash", "supportedGenerationMethods": ["generateContent"]},
     # the newest model, but not on this (free) key: like a real key that can't use Google's latest model yet
     {"name": "models/gemini-4.0-flash", "supportedGenerationMethods": ["generateContent"]},
+    # overloaded, like Google's Flash models often are ("high demand", 503)
+    {"name": "models/gemini-3.9-flash", "supportedGenerationMethods": ["generateContent"]},
     {"name": "models/gemini-3.8-flash", "supportedGenerationMethods": ["generateContent", "countTokens"]},
     {"name": "models/gemini-3.8-flash-lite", "supportedGenerationMethods": ["generateContent"]},
     {"name": "models/gemini-3.8-flash-image", "supportedGenerationMethods": ["generateContent"]},
@@ -97,6 +99,10 @@ class H(BaseHTTPRequestHandler):
         if "gemini-4.0-flash:" in self.path:
             self.send(429, {"error": {"code": 429, "status": "RESOURCE_EXHAUSTED",
                                       "message": "Quota exceeded for metric: generate_content_free_tier_requests, limit: 0"}})
+            return
+        if "gemini-3.9-flash:" in self.path:
+            self.send(503, {"error": {"code": 503, "status": "UNAVAILABLE",
+                                      "message": "This model is currently experiencing high demand. Spikes in demand are usually temporary. Please try again later."}})
             return
         thinking = body.get("generationConfig", {}).get("thinkingConfig", {})
         if "thinkingBudget" in thinking and "gemini-3" in self.path:  # like the real API: Gemini 3 takes a thinkingLevel

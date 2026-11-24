@@ -197,6 +197,9 @@ public class HostTest {
         check(a != null && "gemini-3.8-flash".equals(kv.get("gemini_model")), "the newest model isn't on the free tier, so she switches to one that works: "
             + kv.get("gemini_model") + (a == null ? " (" + g.lastError + ")" : ""));
         check(g.check() == null && "gemini-3.8-flash".equals(kv.get("gemini_model")), "the Save key check says Gemini works");
+        check("yes".equals(kv.get("gemini_gone_gemini-3.8-flash-lite")) && !g.order().contains("gemini-3.8-flash-lite"),
+            "a model that isn't there (404) is never tried again: " + g.order());
+        check(g.order().get(0).equals("gemini-3.8-flash"), "the next question goes straight to the model that answered, past the overloaded (503) one: " + g.order());
         // Streamed like a real assistant: sentences arrive one by one (she starts speaking at the first)
         java.util.List<String> said = new java.util.ArrayList<>();
         String[] ge = new String[2];
