@@ -14,5 +14,6 @@ contextBridge.exposeInMainWorld('blink', {
   showMenu: () => ipcRenderer.send('show-menu'),
   snooze: ms => ipcRenderer.send('snooze', ms),
   quit: () => ipcRenderer.send('quit'),
+  power: on => ipcRenderer.send('power', on),
   on: (channel, fn) => { if (CHANNELS.includes(channel)) ipcRenderer.on(channel, (e, data) => fn(data)); }
 });

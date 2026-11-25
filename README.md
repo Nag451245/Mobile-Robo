@@ -46,7 +46,7 @@ Needs Android 8 or later on a 64-bit phone. Hearing (Whistle) supports English, 
 
 ## Windows: run without installing
 
-Download `Blink-portable-win64.zip` from the Latest build, unzip anywhere and run `Blink.exe`. `Ctrl+Alt+/` lists all keyboard shortcuts. See [`blink-desktop/README.txt`](blink-desktop/README.txt).
+Download `Blink-portable-win64.zip` from the Latest build, unzip anywhere and run `Blink.exe`. Click its icon in the system tray to turn Blink off or on (or press `Ctrl+Alt+O`). `Ctrl+Alt+/` lists all keyboard shortcuts. See [`blink-desktop/README.txt`](blink-desktop/README.txt).
 
 ## Mobile web
 

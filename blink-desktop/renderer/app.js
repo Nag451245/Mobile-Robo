@@ -179,6 +179,7 @@ function command(text){const s=text.toLowerCase().trim();if(!s)return;
   if(/\b(smaller|shrink|tiny)\b/.test(s))return grow(-1);
   if(/\b(calm|quiet mode)\b/.test(s)){settings.mode='calm';api.saveSettings({mode:'calm'});scheduleAntic();say('Okay, I\'ll keep it calm.',2);return;}
   if(/\b(lively|party mode)\b/.test(s)){settings.mode='lively';api.saveSettings({mode:'lively'});scheduleAntic();say('Let\'s have some fun!',2);return;}
+  if(/\b(turn (yourself )?off|switch (yourself )?off|power off|shut down|turn off blink)\b/.test(s)){interrupt();bot.setEmotion('sleepy',2);say('Turning off. Click my tray icon or press Ctrl+Alt+O to turn me back on.',2.6);later(2.2,()=>api.power(false));return;}
   if(/\b(quit|exit)\b/.test(s)){bot.setEmotion('sad',2);say('Bye for now!',1.5);setTimeout(()=>api.quit(),1400);return;}
   if(/\b(go away|bye|shh|hush|leave me|hide)\b/.test(s)&&!/\bhide in\b/.test(s)){interrupt();bot.setEmotion('sad',2);say('Okay, see you in an hour. Ctrl+Alt+Shift+B brings me back.',2.6);later(2,()=>api.snooze(3600e3));return;}
   for(const [re,a] of RULES)if(re.test(s))return perform(a);

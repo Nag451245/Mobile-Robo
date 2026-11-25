@@ -14,10 +14,10 @@ else app.setPath('userData', path.join(app.getPath('appData'), 'Blink'));
 // Lets WebGL fall back to software rendering on machines or VMs without a usable GPU.
 app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 
-const DEFAULTS = { skin: 'bubblegum', size: 'M', mode: 'lively', autoOutfit: 'sometimes', nightCap: true, roam: true, followClicks: true, lastDay: '' };
+const DEFAULTS = { on: true, skin: 'bubblegum', size: 'M', mode: 'lively', autoOutfit: 'sometimes', nightCap: true, roam: true, followClicks: true, lastDay: '' };
 const SKINS = [['bubblegum', 'Bubblegum'], ['sunny', 'Sunny'], ['kitty', 'Mint Kitty'], ['bunny', 'Lavender Bunny'], ['panda', 'Panda'], ['sprout', 'Sprout'], ['classic', 'Classic'], ['snow', 'Snow Buddy'], ['nightcap', 'Sleepy Cap']];
 
-let win = null, tray = null, menu = null;
+let win = null, tray = null, menu = null, trayImg = null, powerTimer = null;
 let snoozed = false, snoozeTimer = null, paletteOpen = false, interactive = false;
 const settingsFile = () => path.join(app.getPath('userData'), 'settings.json');
 let settings = { ...DEFAULTS };
@@ -94,7 +94,7 @@ function createWindow() {
   });
   win.setIgnoreMouseEvents(true, { forward: true });
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
-  win.once('ready-to-show', () => win.showInactive());
+  win.once('ready-to-show', () => { if (settings.on) win.showInactive(); else send('snooze', true); });
   win.on('closed', () => { win = null; });
   win.webContents.on('console-message', (e, level, message, line, source) => {
     if (level < 2 || /GPU stall/.test(message)) return;
@@ -113,7 +113,7 @@ function createWindow() {
 function fitToScreen() { if (win) win.setBounds(screen.getPrimaryDisplay().workArea); }
 
 function openPalette() {
-  if (!win) return;
+  if (!win || !settings.on) return;
   if (snoozed) setSnooze(false);
   paletteOpen = true;
   win.setFocusable(true);
@@ -131,12 +131,43 @@ function closePalette() {
 }
 
 function setSnooze(on, ms) {
+  if (!settings.on && !on) return; // turned off: only the on/off switch brings her back
   snoozed = on;
   clearTimeout(snoozeTimer);
   if (on && ms) snoozeTimer = setTimeout(() => setSnooze(false), ms);
   send('snooze', on);
   buildMenu();
 }
+/* ---------- On/off: off means Blink is gone (window hidden, nothing running) until turned on again ---------- */
+function setPower(on) {
+  if (!win) return;
+  clearTimeout(powerTimer);
+  settings.on = on; saveSettings();
+  if (paletteOpen) { send('palette', false); closePalette(); }
+  if (on) {
+    win.showInactive();
+    setSnooze(false);              // she drops back onto the taskbar
+  } else {
+    snoozed = true; clearTimeout(snoozeTimer);
+    send('snooze', true);          // a little wave goodbye, then gone
+    powerTimer = setTimeout(() => { if (!settings.on && win) win.hide(); }, 900);
+  }
+  updateTray();
+  buildMenu();
+}
+const togglePower = () => setPower(!settings.on);
+function updateTray() {
+  if (!tray) return;
+  tray.setToolTip(settings.on ? 'Blink is on · click to turn off · Ctrl+Alt+O' : 'Blink is off · click to turn on · Ctrl+Alt+O');
+  if (trayImg) tray.setImage(settings.on ? trayImg : dimmed(trayImg));
+}
+// The tray icon at 35% opacity while Blink is off
+function dimmed(img) {
+  const size = img.getSize(), bmp = Buffer.from(img.toBitmap());
+  for (let i = 3; i < bmp.length; i += 4) bmp[i] = Math.round(bmp[i] * 0.35);
+  return nativeImage.createFromBitmap(bmp, { width: size.width, height: size.height });
+}
+
 function setSetting(patch) { Object.assign(settings, patch); saveSettings(); send('settings', settings); buildMenu(); }
 
 const loginOpts = () => (app.isPackaged ? {} : { path: process.execPath, args: [path.resolve(app.getAppPath())] });
@@ -144,10 +175,11 @@ function getLogin() { try { return app.getLoginItemSettings(loginOpts()).openAtL
 function setLogin(on) { app.setLoginItemSettings({ openAtLogin: on, ...loginOpts() }); buildMenu(); }
 
 /* ---------- Keyboard shortcuts (global hotkeys; work from any app) ---------- */
-const cmd = id => () => { if (snoozed) setSnooze(false); send('command', id); };
+const cmd = id => () => { if (!settings.on) return; if (snoozed) setSnooze(false); send('command', id); };
 const SHORTCUTS = [
+  ['Control+Alt+O', 'Turn Blink on / off', togglePower],
   ['Control+Alt+B', 'Talk to Blink (command box)', openPalette],
-  ['Control+Alt+Shift+B', 'Hide for 1 hour / show again', () => setSnooze(!snoozed, snoozed ? 0 : 3600e3)],
+  ['Control+Alt+Shift+B', 'Hide for 1 hour / show again', () => { if (settings.on) setSnooze(!snoozed, snoozed ? 0 : 3600e3); }],
   ['Control+Alt+D', 'Dance', cmd('dance')],
   ['Control+Alt+W', 'Wave', cmd('wave')],
   ['Control+Alt+J', 'Jump', cmd('jump')],
@@ -158,7 +190,7 @@ const SHORTCUTS = [
   ['Control+Alt+G', 'Come to my mouse pointer', cmd('come')],
   ['Control+Alt+F', 'Hide in a desktop file', cmd('dive')],
   ['Control+Alt+0', 'Random outfit', cmd('outfit')],
-  ...SKINS.map(([id, name], i) => [`Control+Alt+${i + 1}`, `Wear ${name}`, () => { if (snoozed) setSnooze(false); send('wear', id); }]),
+  ...SKINS.map(([id, name], i) => [`Control+Alt+${i + 1}`, `Wear ${name}`, () => { if (!settings.on) return; if (snoozed) setSnooze(false); send('wear', id); }]),
   ['Control+Alt+=', 'Bigger', () => send('size', 1)],
   ['Control+Alt+-', 'Smaller', () => send('size', -1)],
   ['Control+Alt+/', 'Show this list', () => send('shortcuts', shortcutList())]
@@ -179,6 +211,8 @@ function buildMenu() {
   const act = (id, label, sc) => ({ label, click: cmd(id), ...accFor(sc || label) });
   menu = Menu.buildFromTemplate([
     { label: 'Blink Desk Buddy', enabled: false },
+    { label: settings.on ? 'Blink is on' : 'Blink is off', type: 'checkbox', checked: !!settings.on, click: togglePower, ...accFor('Turn Blink on / off') },
+    { type: 'separator' },
     { type: 'separator' },
     { label: 'Talk to Blink…', click: openPalette, ...accFor('Talk to Blink (command box)') },
     { label: 'Actions', submenu: [act('dance', 'Dance'), act('wave', 'Wave'), act('jump', 'Jump'), act('spin', 'Spin'), act('joke', 'Tell a joke'), act('stretch', 'Stretch break'), act('napToggle', 'Nap / wake up'), { type: 'separator' }, act('come', 'Come to my mouse pointer'), act('dive', 'Hide in a desktop file')] },
@@ -192,7 +226,7 @@ function buildMenu() {
     { label: 'Activity', submenu: radio([['calm', 'Calm (antic every 6–12 min)'], ['normal', 'Normal (every 2–4 min)'], ['lively', 'Lively (every 20–40 s)']], 'mode') },
     { label: 'Keyboard shortcuts…', click: () => send('shortcuts', shortcutList()), ...accFor('Show this list') },
     { type: 'separator' },
-    { label: snoozed ? 'Show Blink' : 'Hide for 1 hour', click: () => setSnooze(!snoozed, snoozed ? 0 : 3600e3), ...accFor('Hide for 1 hour / show again') },
+    { label: snoozed ? 'Show Blink' : 'Hide for 1 hour', enabled: !!settings.on, click: () => setSnooze(!snoozed, snoozed ? 0 : 3600e3), ...accFor('Hide for 1 hour / show again') },
     { label: 'Start with Windows', type: 'checkbox', checked: getLogin(), click: m => setLogin(m.checked) },
     { type: 'separator' },
     { label: 'Quit Blink', click: () => app.quit() }
@@ -204,7 +238,7 @@ function buildMenu() {
 let lastCur = { x: -1, y: -1 }, lastMove = 0, busyUntil = 0, lastBusy = null, lastAway = null, btnDown = null;
 function startSensors() {
   setInterval(() => {
-    if (!win) return;
+    if (!win || !settings.on) return; // off: nothing is watched
     const c = screen.getCursorScreenPoint(), now = Date.now();
     if (c.x !== lastCur.x || c.y !== lastCur.y) { lastMove = now; lastCur = c; }
     const b = win.getBounds();
@@ -218,7 +252,7 @@ function startSensors() {
     if (busy !== lastBusy || away !== lastAway) { lastBusy = busy; lastAway = away; send('sense', { busy, away }); }
   }, 400);
   if (native) setInterval(() => {
-    if (!win || snoozed) { btnDown = null; return; }
+    if (!win || snoozed || !settings.on) { btnDown = null; return; }
     let down = false; try { down = (native.key(0x01) & 0x8000) !== 0; } catch { return; }
     const c = screen.getCursorScreenPoint();
     if (down && !btnDown) btnDown = { x: c.x, y: c.y, t: Date.now(), desk: !interactive && !paletteOpen && isDesk(rootClassAt(c)) };
@@ -234,7 +268,7 @@ function startSensors() {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => openPalette());
+  app.on('second-instance', () => { if (!settings.on) setPower(true); else openPalette(); }); // starting Blink.exe again turns her on
   app.whenReady().then(() => {
     loadSettings();
     createWindow();
@@ -247,6 +281,14 @@ if (!app.requestSingleInstanceLock()) {
     if (process.env.BLINK_TEST) setTimeout(async () => { const vi = await visibleIcons(); const msg = `native=${!!native} icons=${(await fetchIcons()).length} visible=${vi.length} probe=${rootClassAt({ x: 300, y: 300 })}`; console.log('[test]', msg); try { fs.writeFileSync(path.join(app.getPath('userData'), 'test.log'), msg); } catch { } console.log('[test probe]', rootClassAt({ x: 300, y: 300 })); }, 4000);
     if (process.env.BLINK_TEST === 'click') setTimeout(() => { const b = win.getBounds(); send('desk-click', { x: Math.round(b.width * .35), y: Math.round(b.height * .35) }); console.log('[test] simulated desktop click'); }, 8000);
     if (process.env.BLINK_TEST === 'dive') setTimeout(() => { send('command', 'dive'); console.log('[test] dive command'); }, 7000);
+    if (process.env.BLINK_TEST === 'power') { // off, then on again: the window hides, sensors stop, settings remember it
+      setTimeout(() => console.log(`[test] at start: on=${settings.on} visible=${win.isVisible()}`), 5000);
+      setTimeout(() => { setPower(false); console.log('[test] turned off'); }, 6000);
+      setTimeout(() => console.log(`[test] while off: visible=${win.isVisible()} saved on=${JSON.parse(fs.readFileSync(settingsFile(), 'utf8')).on} tooltip ok=${!!tray}`), 8000);
+      setTimeout(() => { setPower(true); console.log('[test] turned on'); }, 9000);
+      setTimeout(() => console.log(`[test] while on: visible=${win.isVisible()} saved on=${JSON.parse(fs.readFileSync(settingsFile(), 'utf8')).on}`), 10500);
+      setTimeout(() => app.quit(), 13000);
+    }
     if (/^test-/.test(process.env.BLINK_TEST || '')) setTimeout(() => send('command', process.env.BLINK_TEST), 7000);
     if (process.env.BLINK_TEST === 'divespam') setTimeout(() => {
       const iv = setInterval(() => send('command', 'dive'), 700);
@@ -268,14 +310,16 @@ if (!app.requestSingleInstanceLock()) {
   ipcMain.on('show-menu', () => { if (menu && win) menu.popup({ window: win }); });
   ipcMain.on('snooze', (e, ms) => setSnooze(true, ms));
   ipcMain.on('quit', () => app.quit());
+  ipcMain.on('power', (e, on) => setPower(!!on));
   ipcMain.on('tray-icon', (e, url) => {
     const img = nativeImage.createFromDataURL(url);
+    trayImg = img;
     if (!tray) {
       tray = new Tray(img);
-      tray.setToolTip('Blink Desk Buddy · Ctrl+Alt+B to talk · Ctrl+Alt+/ for shortcuts');
-      tray.on('click', openPalette);
+      tray.on('click', togglePower); // the tray icon is her on/off button; right-click for the menu
       buildMenu();
-    } else tray.setImage(img);
+    }
+    updateTray();
   });
 
   app.on('will-quit', () => globalShortcut.unregisterAll());

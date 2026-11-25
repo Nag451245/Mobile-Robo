@@ -8,8 +8,16 @@ Blink drops onto the top of your taskbar and says hi.
 There is no window or taskbar button. Look for the small Blink face in the system tray
 (click the ^ arrow near the clock if it is hidden).
 
+On / off
+--------
+Click the Blink face in the system tray to turn Blink off or on (right-click it for the menu).
+When Blink is off the icon is dimmed, the robot is gone and nothing is watched or animated;
+Blink stays off after a restart until you turn it on again. Also: Ctrl+Alt+O, the first item
+in the menu ("Blink is on"), typing "turn off" in the command box, or starting Blink.exe again (turns it on).
+
 Keyboard shortcuts (work from any app)
 --------------------------------------
+Ctrl+Alt+O            Turn Blink on / off
 Ctrl+Alt+B            Talk to Blink (command box)
 Ctrl+Alt+Shift+B      Hide for 1 hour / show again
 Ctrl+Alt+/            Show all shortcuts in a speech bubble
@@ -37,7 +45,7 @@ Tricks (Ctrl+Alt+B, then type)
 catch the butterfly / catch the bird  One flutters in; Blink chases it, misses once, catches it and lets it go
 go away / hide                        Hides for an hour (Ctrl+Alt+Shift+B brings it back sooner)
 come back                             Wakes Blink up
-Right-click Blink                    Menu: actions, outfits, roaming, size, activity, start with Windows, quit
+Right-click Blink                    Menu: on/off, actions, outfits, roaming, size, activity, start with Windows, quit
 
 Roaming
 -------
